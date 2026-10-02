@@ -1,0 +1,23 @@
+[project]
+name = "aipodcaster-backend"
+version = "1.0.0"
+description = "AiPodcaster API: transcription, cleanup, fact checking, rendering and publishing"
+authors = [{ name = "Vladimir Chopine", email = "studio@geekatplay.com" }]
+license = { text = "MIT" }
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 300
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+ignore = ["S101", "S105", "S110", "S112", "S603", "S607"]
+
+[tool.mutmut]
+paths_to_mutate = ["app/services/analysis.py", "app/services/publish.py"]
+tests_dir = ["tests"]

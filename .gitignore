@@ -1,0 +1,22 @@
+.run/
+data/
+web/node_modules/
+web/dist/
+web/coverage/
+web/playwright-report/
+web/test-results/
+backend/.venv/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mutmut-cache
+backend/tests/.tmp-data/
+backend/tests/.e2e-data/
+__pycache__/
+*.pyc
+.env
+.env.*
+# legacy starter kept until manually removed
+frontend/
+_private/
+web/e2e/.auth/
+test-results/
