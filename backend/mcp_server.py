@@ -98,6 +98,16 @@ def upload_recording(file_path: str, project_id: str | None = None) -> dict:
     return _compact_job(response.json())
 
 
+@server.tool(description="Import an episode from a link: YouTube, Vimeo, podcast page or direct audio/video URL. Poll get_job until waiting_for_approval.")
+def import_url(url: str, project_id: str | None = None) -> dict:
+    return _compact_job(_call("POST", "/v1/jobs/url", json={"url": url, "project_id": project_id}))
+
+
+@server.tool(description="Import a large recording or video that already exists on the server machine (absolute path) without uploading.")
+def import_local_path(path: str, project_id: str | None = None) -> dict:
+    return _compact_job(_call("POST", "/v1/jobs/local", json={"path": path, "project_id": project_id, "copy_file": True}))
+
+
 @server.tool(description="Replace the text of transcript segments: edits = [{id, text}].")
 def edit_transcript(job_id: str, edits: list[dict]) -> dict:
     return _compact_job(_call("PUT", f"/v1/jobs/{job_id}/transcript", json={"segments": edits}))

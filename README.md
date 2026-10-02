@@ -33,7 +33,7 @@ Everything runs on your machine by default. Cloud models are optional, pluggable
 
 | | |
 | --- | --- |
-| **Any input** | Audio or video (WAV, MP3, M4A, FLAC, OGG, WEBM, MP4, MOV) or text: paste a transcript, or drop TXT, Markdown, SRT, VTT, PDF, Word, HTML, EPUB. Captions, timestamps, speaker dialogue and prose are detected automatically. |
+| **Any input** | Audio or video (WAV, MP3, M4A, FLAC, OGG, WEBM, MP4, MOV), links (YouTube, Vimeo, podcast pages, direct media URLs), multi-gigabyte files imported straight from disk, or text: paste a transcript, or drop TXT, Markdown, SRT, VTT, PDF, Word, HTML, EPUB. Captions, timestamps, speaker dialogue and prose are detected automatically. |
 | **Transparent cleanup** | Profanity (+ custom words), filler words and phrases, repeated words, long pauses. Click a word to keep or remove it, accept or reject by category, edit the text inline while timing is preserved. |
 | **Fact checking (RAG)** | Build knowledge libraries from books, papers and web pages (local ChromaDB vector index). Projects pick which libraries to trust and can inherit other projects' libraries. Claims are extracted, matched against evidence and Wikipedia, and contradictions are flagged with sources. |
 | **Production** | Micro-faded cuts from the original voice, or a synthetic voice reading the approved text. EBU R128 loudness mastering, true-peak ceiling, MP3 and WAV master. Clone your own voice from the recording with ElevenLabs. |
@@ -86,7 +86,7 @@ chmod +x scripts/*.sh
 ```
 
 1. Open **Settings** once: pick a transcription provider (local Whisper works out of the box), optionally a language model (press *Prepare best model* under Ollama) and a speech provider.
-2. On **Episodes**, drop a recording or paste a transcript.
+2. On **Episodes**, drop a recording, paste a link, point at a large file on disk, or paste a transcript.
 3. Review the proposals, run a fact check, approve.
 4. Open **Publish & export**, generate the copy and artwork, publish.
 
@@ -138,7 +138,8 @@ Tools include `upload_recording`, `get_job`, `edit_transcript`, `approve_and_ren
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `AIPODCASTER_DATA_DIR` | `./data` | Settings, uploads, outputs, libraries, vectors |
-| `AIPODCASTER_MAX_UPLOAD_MB` / `AIPODCASTER_MAX_DURATION_MIN` | `500` / `240` | Upload limits |
+| `AIPODCASTER_MAX_UPLOAD_MB` / `AIPODCASTER_MAX_DURATION_MIN` | `8192` / `600` | Size and length limits for uploads, link downloads and local imports |
+| `AIPODCASTER_ALLOW_LOCAL_IMPORT` | `1` | Allow importing files by absolute path on the server machine |
 | `AIPODCASTER_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | CORS |
 | `AIPODCASTER_API_KEYS` | – | Extra API keys (comma separated) |
 | `AIPODCASTER_PUBLIC_URL` | `http://127.0.0.1:8000` | URL written into publish manifests |

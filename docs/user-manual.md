@@ -204,6 +204,14 @@ $env:AIPODCASTER_API_KEY = "apk_..."
 
 Available tools: `status`, `list_jobs`, `get_job`, `upload_recording`, `edit_transcript`, `approve_and_render`, `run_fact_check`, `get_fact_check`, `list_outputs`, `download_output`, `list_libraries`, `create_library`, `add_documents`, `add_url`, `search_library`, `list_projects`, `create_project`, `get_providers`, `ollama_status`, `ollama_setup`, `test_language_model`.
 
+## 12a. Large files, video and links
+
+**Video files** (MP4, MOV, WEBM) are accepted everywhere a recording is: the audio track is extracted automatically and the video itself is kept untouched as the source.
+
+**Large files.** The browser upload limit defaults to 8 GB (`AIPODCASTER_MAX_UPLOAD_MB`) and recordings up to 10 hours (`AIPODCASTER_MAX_DURATION_MIN`). For multi-gigabyte videos use **Episodes → Link or large file → Large file already on this computer** and paste the absolute path (for example `D:\Recordings\episode-14.mp4`). The server reads the file directly from disk, so nothing passes through the browser. Set `AIPODCASTER_ALLOW_LOCAL_IMPORT=0` to disable this on shared installations.
+
+**Links.** On the same tab paste a URL to YouTube, Vimeo, SoundCloud, a podcast page or a direct MP3/MP4 link. AiPodcaster resolves the title and author, downloads only the audio stream where available (with progress shown on the episode page), and then runs the normal pipeline. The episode keeps a “source link” next to its details. Only publicly reachable http(s) links are accepted; links to private or local addresses are refused. Respect the rights of the content you import.
+
 ## 13. Episodes from text, transcripts and documents
 
 You do not need a recording. On the Episodes page choose the **Transcript / text** tab and either drop a file (TXT, Markdown, SRT, VTT, PDF, Word, HTML, EPUB) or paste text. AiPodcaster detects the format automatically:

@@ -45,6 +45,8 @@ export const episodesApi = {
     if (projectId) params.set("project_id", projectId);
     return json<ProcessingJob>(`/v1/jobs/text/upload?${params}`, { method: "POST", body: form });
   },
+  importUrl: (url: string, projectId: string | null) => json<ProcessingJob>("/v1/jobs/url", { method: "POST", body: JSON.stringify({ url, project_id: projectId }) }),
+  importLocalPath: (path: string, projectId: string | null) => json<ProcessingJob>("/v1/jobs/local", { method: "POST", body: JSON.stringify({ path, project_id: projectId, copy_file: true }) }),
   updateMeta: (id: string, body: { display_name?: string; archived?: boolean; project_id?: string | null; clear_project?: boolean; tags?: string[]; notes?: string }) =>
     json<ProcessingJob>(`/v1/jobs/${encodeURIComponent(id)}/meta`, { method: "PATCH", body: JSON.stringify(body) }),
   reorder: (ids: string[]) => json<JobSummary[]>("/v1/jobs/reorder", { method: "POST", body: JSON.stringify({ ids }) }),

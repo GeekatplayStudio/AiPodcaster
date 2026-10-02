@@ -135,6 +135,14 @@ export function JobPage({ id, onBack }: { id: string; onBack: () => void }) {
             {formatBytes(job.media.size_bytes)}
             {job.language ? ` · ${job.language.toUpperCase()}` : ""}
             {job.transcription_provider ? ` · ${job.transcription_provider}` : ""}
+            {job.source_url ? (
+              <>
+                {" · "}
+                <a href={job.source_url} target="_blank" rel="noreferrer">
+                  source link
+                </a>
+              </>
+            ) : null}
           </p>
         </div>
         <StageBadge stage={job.stage} progress={job.progress} />

@@ -14,6 +14,7 @@ Run everything with `scripts\test.ps1` (Windows) or `./scripts/test.sh` (POSIX).
 | Unit (providers) | pytest + monkeypatched httpx | `backend/tests/test_providers.py` | LLM dispatch for every backend, OpenAI-compatible validation, error mapping, Ollama recommendation and setup (select / pull / persist), provider catalog, speech registry and custom template, API-key middleware, MCP tool registration |
 | Integration (episodes) | pytest | `backend/tests/test_episodes.py` | Format detection for SRT/VTT/timestamped/dialogue/prose, text episodes from paste and upload, metadata, search, archive, reorder, bulk delete, render guard for text jobs, statistics endpoint |
 | Integration (publishing) | pytest + monkeypatched httpx | `backend/tests/test_publishing.py` | Kit generation and editing, thumbnail generation (size check) and upload validation, package zip, target CRUD with secret masking, webhook publish success/failure, manual targets, WordPress connector payload |
+| Integration (imports) | pytest + monkeypatched yt-dlp | `backend/tests/test_remote_media.py` | URL validation (private hosts refused), local-path import without upload, link import with download progress and failure reporting |
 | Unit (web) | Vitest + Testing Library + jsdom | `web/src/**/*.test.ts(x)` | Pure helpers, proposal panel interactions, routing, API status |
 | End-to-end | Playwright (Chromium) | `web/e2e/workflow.spec.ts`, `web/e2e/factcheck.spec.ts`, `web/e2e/providers.spec.ts`, `web/e2e/episodes.spec.ts` | Boots real API (fake transcriber) and Vite; uploads a generated WAV, rejects an edit, edits text, approves, downloads MP3, settings round-trip |
 | Mutation | mutmut | `backend/pyproject.toml` | Restricted to deterministic modules `analysis.py` and `publish.py` |
@@ -40,6 +41,6 @@ Setting `AIPODCASTER_TRANSCRIBER=fake` swaps the ASR provider for a scripted tra
 ## Current results
 
 ```
-backend: ruff clean, 51 tests passed
+backend: ruff clean, 55 tests passed
 web:     eslint clean, tsc clean, 28 unit tests passed, 6 e2e tests passed
 ```

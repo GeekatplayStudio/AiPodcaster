@@ -191,6 +191,7 @@ class ProcessingJob(BaseModel):
     asset_name: str
     display_name: str = Field(default="", max_length=200)
     source_kind: SourceKind = SourceKind.AUDIO
+    source_url: str | None = None
     archived: bool = False
     order: int = 0
     tags: list[str] = Field(default_factory=list, max_length=30)
@@ -222,6 +223,7 @@ class JobSummary(BaseModel):
     asset_name: str
     display_name: str = ""
     source_kind: SourceKind = SourceKind.AUDIO
+    source_url: str | None = None
     archived: bool = False
     order: int = 0
     tags: list[str] = Field(default_factory=list)
@@ -302,3 +304,14 @@ class VerifyRequest(BaseModel):
 class FactCheckDecision(BaseModel):
     id: UUID
     dismissed: bool
+
+
+class UrlImport(BaseModel):
+    url: str = Field(min_length=8, max_length=2_000)
+    project_id: UUID | None = None
+
+
+class LocalPathImport(BaseModel):
+    path: str = Field(min_length=3, max_length=1_000)
+    project_id: UUID | None = None
+    copy_file: bool = True

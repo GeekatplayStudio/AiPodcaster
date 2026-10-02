@@ -1,16 +1,19 @@
 """Episode management: text/transcript ingestion, metadata, ordering, bulk actions, stats."""
 from __future__ import annotations
 
+import shutil
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
+from starlette.concurrency import run_in_threadpool
 
-from ..config import settings_store
+from ..config import ALLOW_LOCAL_IMPORT, settings_store
 from ..rag.parsing import ALLOWED_DOCUMENT_EXTENSIONS, ParseError, extract_text
 from ..rag.store import project_store
-from ..schemas import BulkRequest, JobMetaUpdate, JobStage, JobSummary, ProcessingJob, ReorderRequest, SourceKind, TextIngest, VoiceMode
-from ..services import analysis, llm, pipeline, stats, text_ingest
+from ..schemas import BulkRequest, JobMetaUpdate, JobStage, JobSummary, LocalPathImport, ProcessingJob, ReorderRequest, SourceKind, TextIngest, UrlImport, VoiceMode
+from ..services import analysis, llm, pipeline, remote_media, stats, text_ingest
 from ..storage import SAFE_NAME, job_store, summarise_job
 
 router = APIRouter(prefix="/v1/jobs", tags=["episodes"])
@@ -71,6 +74,53 @@ async def create_from_text_file(file: UploadFile, project_id: UUID | None = None
     finally:
         tmp.unlink(missing_ok=True)
     return _create_text_job(text, cleaned[:180], project_id, max(80, min(words_per_minute, 260)))
+
+
+_downloads = ThreadPoolExecutor(max_workers=2, thread_name_prefix="download")
+
+
+@router.post("/url", response_model=ProcessingJob, status_code=status.HTTP_202_ACCEPTED)
+async def create_from_url(body: UrlImport) -> ProcessingJob:
+    """Import audio from YouTube, Vimeo, podcast pages or direct media links (yt-dlp)."""
+    url = remote_media.validate_url(body.url)
+    if body.project_id is not None:
+        project_store.get(body.project_id)
+    try:
+        info = await run_in_threadpool(remote_media.probe_url, url)
+    except remote_media.RemoteMediaError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    name = SAFE_NAME.sub("_", info["title"]).strip(" .")[:150] or "remote-episode"
+    job = ProcessingJob(asset_name=f"{name}.m4a", display_name=info["title"], project_id=body.project_id, source_url=url, message=f"Queued download from {info['extractor'] or 'link'}")
+    if info["uploader"]:
+        job.tags = [info["uploader"][:40]]
+    job_store.create(job)
+    _downloads.submit(remote_media.run_download, job.id, url)
+    return job_store.get(job.id)
+
+
+@router.post("/local", response_model=ProcessingJob, status_code=status.HTTP_201_CREATED)
+async def create_from_local_path(body: LocalPathImport) -> ProcessingJob:
+    """Import a large recording or video that already exists on this machine without uploading it."""
+    if not ALLOW_LOCAL_IMPORT:
+        raise HTTPException(status_code=403, detail="Local path import is disabled (AIPODCASTER_ALLOW_LOCAL_IMPORT=0)")
+    path = remote_media.resolve_local_path(body.path)
+    if body.project_id is not None:
+        project_store.get(body.project_id)
+    job = job_store.create(ProcessingJob(asset_name=path.name, project_id=body.project_id, message="Importing from local path"))
+    target = pipeline.source_path(job_store, job.id)
+    await run_in_threadpool(shutil.copy2 if body.copy_file else _link_or_copy, str(path), str(target))
+    job.media.size_bytes = target.stat().st_size
+    job.message = "Queued for analysis"
+    job_store.save(job)
+    pipeline.submit(job.id, "analysis")
+    return job_store.get(job.id)
+
+
+def _link_or_copy(source: str, target: str) -> None:
+    try:
+        Path(target).hardlink_to(source)
+    except OSError:
+        shutil.copy2(source, target)
 
 
 @router.patch("/{job_id}/meta", response_model=ProcessingJob)

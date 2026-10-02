@@ -2,11 +2,12 @@ import { useEffect, useRef, useState, type ChangeEvent, type DragEvent } from "r
 import { uploadRecording } from "../api/client";
 import { ragApi } from "../api/rag";
 import type { ProcessingJob, Project } from "../api/types";
+import { LinkImportPanel } from "./LinkImportPanel";
 import { TextImportPanel } from "./TextImportPanel";
 import { validateFile } from "../lib/edits";
 import { formatBytes } from "../lib/format";
 
-const MAX_BYTES = 500 * 1024 * 1024;
+const MAX_BYTES = 8 * 1024 * 1024 * 1024;
 
 export function UploadPanel({ onUploaded }: { onUploaded: (job: ProcessingJob) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -15,7 +16,7 @@ export function UploadPanel({ onUploaded }: { onUploaded: (job: ProcessingJob) =
   const [progress, setProgress] = useState<number | null>(null);
   const [fileName, setFileName] = useState<string>("");
   const [projects, setProjects] = useState<Project[]>([]);
-  const [mode, setMode] = useState<"voice" | "text">("voice");
+  const [mode, setMode] = useState<"voice" | "link" | "text">("voice");
   const [projectId, setProjectId] = useState<string>(() => {
     try {
       return window.localStorage.getItem("aipodcaster.project") ?? "";
@@ -86,10 +87,14 @@ export function UploadPanel({ onUploaded }: { onUploaded: (job: ProcessingJob) =
         <button type="button" role="tab" className={`tab${mode === "voice" ? " active" : ""}`} aria-selected={mode === "voice"} onClick={() => setMode("voice")}>
           Voice recording
         </button>
+        <button type="button" role="tab" className={`tab${mode === "link" ? " active" : ""}`} aria-selected={mode === "link"} onClick={() => setMode("link")}>
+          Link or large file
+        </button>
         <button type="button" role="tab" className={`tab${mode === "text" ? " active" : ""}`} aria-selected={mode === "text"} onClick={() => setMode("text")}>
           Transcript / text
         </button>
       </div>
+      {mode === "link" && <LinkImportPanel projectId={projectId || null} onCreated={onUploaded} />}
       {mode === "text" && <TextImportPanel projectId={projectId || null} onCreated={onUploaded} />}
       {mode === "voice" && (
       <div
@@ -113,7 +118,7 @@ export function UploadPanel({ onUploaded }: { onUploaded: (job: ProcessingJob) =
       >
         <input ref={inputRef} type="file" accept="audio/*,video/mp4,video/quicktime,video/webm" onChange={onChange} aria-label="Choose a recording" />
         <strong id="upload-title">{busy ? "Uploading…" : "Drop a raw recording here or click to choose"}</strong>
-        <span className="muted small">WAV, MP3, M4A, FLAC, OGG, WEBM, MP4 · up to {formatBytes(MAX_BYTES)}. The original is never modified.</span>
+        <span className="muted small">Audio or video: WAV, MP3, M4A, FLAC, OGG, WEBM, MP4, MOV · up to {formatBytes(MAX_BYTES)} through the browser. For bigger files use “Link or large file”. The original is never modified.</span>
         {busy && (
           <div style={{ marginTop: "1rem" }}>
             <div className="muted small" style={{ marginBottom: 6 }}>

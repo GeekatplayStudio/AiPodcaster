@@ -13,3 +13,4 @@ psutil>=6.0
 pillow>=10.0
 av>=11,<16
 numpy>=1.26
+yt-dlp>=2025.1.0

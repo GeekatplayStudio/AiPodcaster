@@ -82,6 +82,7 @@ export interface ProcessingJob {
   asset_name: string;
   display_name: string;
   source_kind: SourceKind;
+  source_url: string | null;
   archived: boolean;
   order: number;
   tags: string[];

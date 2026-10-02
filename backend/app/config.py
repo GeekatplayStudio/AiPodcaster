@@ -14,8 +14,9 @@ from pydantic import BaseModel, Field
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = Path(os.environ.get("AIPODCASTER_DATA_DIR", ROOT_DIR / "data")).resolve()
-MAX_UPLOAD_BYTES = int(os.environ.get("AIPODCASTER_MAX_UPLOAD_MB", "500")) * 1024 * 1024
-MAX_DURATION_SECONDS = int(os.environ.get("AIPODCASTER_MAX_DURATION_MIN", "240")) * 60
+MAX_UPLOAD_BYTES = int(os.environ.get("AIPODCASTER_MAX_UPLOAD_MB", "8192")) * 1024 * 1024
+MAX_DURATION_SECONDS = int(os.environ.get("AIPODCASTER_MAX_DURATION_MIN", "600")) * 60
+ALLOW_LOCAL_IMPORT = os.environ.get("AIPODCASTER_ALLOW_LOCAL_IMPORT", "1") not in {"0", "false", "no"}
 ALLOWED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("AIPODCASTER_ALLOWED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173").split(",")
