@@ -14,6 +14,7 @@ test("text import → library management → stats → publish page", async ({ p
   await page.getByRole("button", { name: "Create episode from text" }).click();
 
   await expect(page.getByRole("heading", { name: "Focus interview" })).toBeVisible();
+  await page.getByRole("button", { name: "Not now" }).click();
   await expect(page.getByText(/Text episode: timing is estimated/)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Suggested edits" })).toBeVisible();
   await expect(page.getByLabel("Voice")).toBeDisabled();
@@ -35,8 +36,9 @@ test("text import → library management → stats → publish page", async ({ p
   await page.getByLabel("Search episodes").fill("focus");
   await expect(page.getByRole("link", { name: "Focus interview" })).toBeVisible();
   await page.getByRole("button", { name: "Rename Focus interview" }).click();
-  await page.getByLabel("Episode name").fill("Focus interview v2");
-  await page.getByLabel("Episode name").press("Enter");
+  const rename = page.getByRole("table").getByLabel("Episode name");
+  await rename.fill("Focus interview v2");
+  await rename.press("Enter");
   await expect(page.getByRole("link", { name: "Focus interview v2" })).toBeVisible();
   await page.getByLabel("Select Focus interview v2").check();
   await page.getByRole("button", { name: "Archive", exact: true }).click();

@@ -5,56 +5,68 @@ cut until the user approves.
 """
 from __future__ import annotations
 
-import re
-
 from ..config import CleanupSettings
 from ..schemas import EditKind, EditProposal, TranscriptSegment, Word
+from . import languages
 
-DEFAULT_BAD_WORDS = {
-    "fuck", "fucking", "fucked", "fucker", "shit", "shitty", "bullshit", "bitch", "bastard", "asshole",
-    "damn", "goddamn", "crap", "dick", "piss", "pissed", "cunt", "motherfucker", "whore", "slut",
-}
-DEFAULT_FILLERS = {"um", "uh", "umm", "uhh", "erm", "hmm", "mm", "ah", "er", "like", "literally", "basically", "actually"}
-LIGHT_FILLERS = {"like", "literally", "basically", "actually"}
-FILLER_PHRASES = ("you know", "i mean", "kind of", "sort of")
-PUNCT = re.compile(r"[^\w'-]+")
+DEFAULT_BAD_WORDS = languages.PROFANITY["en"]
+DEFAULT_FILLERS = set(languages.strong_fillers("en")) | set(languages.light_fillers("en"))
+LIGHT_FILLERS = set(languages.light_fillers("en"))
+FILLER_PHRASES = tuple(languages.FILLER_PHRASES["en"])
 
 
 def normalise(token: str) -> str:
-    return PUNCT.sub("", token.lower()).strip("'-")
+    return languages.normalise(token)
 
 
 def _flat_words(segments: list[TranscriptSegment]) -> list[Word]:
     return [word for segment in segments for word in segment.words]
 
 
-def find_profanity(words: list[Word], extra: list[str]) -> list[EditProposal]:
-    bad = DEFAULT_BAD_WORDS | {normalise(item) for item in extra if normalise(item)}
+def find_profanity(words: list[Word], extra: list[str], language: str | None = None) -> list[EditProposal]:
+    bad = languages.profanity_words(language) | {normalise(item) for item in extra if normalise(item)}
+    prefixes = [item for item in bad if len(item) >= 4]
     proposals: list[EditProposal] = []
     for word in words:
         core = normalise(word.text)
-        if core in bad or any(core.startswith(item) and len(core) - len(item) <= 3 for item in bad if len(item) >= 4):
+        if not core:
+            continue
+        hit = core in bad or any(core.startswith(item) and len(core) - len(item) <= 3 for item in prefixes) or languages.is_profane_stem(core, language)
+        if hit:
             proposals.append(EditProposal(kind=EditKind.PROFANITY, start_ms=word.start_ms, end_ms=max(word.end_ms, word.start_ms + 1), text=word.text, reason="Profanity", confidence=0.95))
     return proposals
 
 
-def find_fillers(words: list[Word], extra: list[str]) -> list[EditProposal]:
-    fillers = DEFAULT_FILLERS | {normalise(item) for item in extra if normalise(item)}
+def find_fillers(words: list[Word], extra: list[str], language: str | None = None) -> list[EditProposal]:
+    strong = set(languages.strong_fillers(language)) | {normalise(item) for item in extra if normalise(item)}
+    light = set(languages.light_fillers(language)) - strong
+    phrases = languages.filler_phrases(language)
     proposals: list[EditProposal] = []
+
+    def add(start: Word, end: Word, text: str, reason: str, confidence: float, accepted: bool) -> None:
+        proposals.append(EditProposal(kind=EditKind.FILLER, start_ms=start.start_ms, end_ms=max(end.end_ms, start.start_ms + 1), text=text, reason=reason, confidence=confidence, accepted=accepted))
+
     index = 0
     while index < len(words):
         word = words[index]
         core = normalise(word.text)
+        if index + 2 < len(words):
+            triple = f"{core} {normalise(words[index + 1].text)} {normalise(words[index + 2].text)}"
+            if triple in phrases:
+                add(word, words[index + 2], " ".join(w.text for w in words[index:index + 3]), "Filler phrase", 0.7, False)
+                index += 3
+                continue
         if index + 1 < len(words):
             pair = f"{core} {normalise(words[index + 1].text)}"
-            if pair in FILLER_PHRASES:
-                nxt = words[index + 1]
-                proposals.append(EditProposal(kind=EditKind.FILLER, start_ms=word.start_ms, end_ms=max(nxt.end_ms, word.start_ms + 1), text=f"{word.text} {nxt.text}", reason="Filler phrase", confidence=0.7, accepted=False))
+            if pair in phrases:
+                add(word, words[index + 1], f"{word.text} {words[index + 1].text}", "Filler phrase", 0.7, False)
                 index += 2
                 continue
-        if core in fillers:
-            light = core in LIGHT_FILLERS
-            proposals.append(EditProposal(kind=EditKind.FILLER, start_ms=word.start_ms, end_ms=max(word.end_ms, word.start_ms + 1), text=word.text, reason="Verbal filler" if not light else "Possible filler (context dependent)", confidence=0.6 if light else 0.92, accepted=not light))
+        stretched = languages.elongation_kind(word.text)
+        if core in strong or stretched == "strong":
+            add(word, word, word.text, "Hesitation sound" if stretched else "Verbal filler", 0.93 if stretched else 0.92, True)
+        elif core in light or stretched == "light":
+            add(word, word, word.text, "Drawn-out filler word" if stretched else "Possible filler (context dependent)", 0.75 if stretched else 0.6, bool(stretched))
         index += 1
     return proposals
 
@@ -100,15 +112,15 @@ def find_long_pauses(silences: list[tuple[int, int]], words: list[Word], config:
     return proposals
 
 
-def build_proposals(segments: list[TranscriptSegment], silences: list[tuple[int, int]], config: CleanupSettings, duration_ms: int) -> list[EditProposal]:
+def build_proposals(segments: list[TranscriptSegment], silences: list[tuple[int, int]], config: CleanupSettings, duration_ms: int, language: str | None = None) -> list[EditProposal]:
     words = _flat_words(segments)
     proposals: list[EditProposal] = []
     if config.remove_profanity:
-        proposals += find_profanity(words, config.extra_bad_words)
+        proposals += find_profanity(words, config.extra_bad_words, language)
     if config.remove_repeats:
         proposals += find_repeats(words)
     if config.remove_fillers:
-        proposals += find_fillers(words, config.extra_filler_words)
+        proposals += find_fillers(words, config.extra_filler_words, language)
     if config.tighten_silence:
         proposals += find_long_pauses(silences, words, config, duration_ms)
     return _dedupe(sorted(proposals, key=lambda item: (item.start_ms, -item.end_ms)))

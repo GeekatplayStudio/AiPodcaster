@@ -83,6 +83,10 @@ export interface ProcessingJob {
   display_name: string;
   source_kind: SourceKind;
   source_url: string | null;
+  language_override: string | null;
+  pipeline_run: number;
+  processing_started_at: string | null;
+  eta_seconds: number | null;
   archived: boolean;
   order: number;
   tags: string[];
@@ -134,7 +138,7 @@ export interface JobSummary {
 }
 
 export interface AppSettings {
-  transcription: { provider: "faster_whisper" | "openai" | "fake"; model: string; language: string | null };
+  transcription: { provider: "faster_whisper" | "openai" | "fake"; model: string; language: string | null; verbatim: boolean };
   language_model: { provider: LlmProviderId; model: string; base_url: string; temperature: number };
   speech: { provider: SpeechProviderId; voice: string; model: string; base_url: string; custom_body_template: string; custom_auth_header: string };
   cleanup: {
@@ -445,4 +449,27 @@ export interface JobStats {
   pause_histogram: { label: string; count: number }[];
   fact_check: { verdicts: Record<string, number>; judge: string; sources: string[] };
   proposals_confidence: { label: string; count: number }[];
+}
+
+export interface ApiInfo {
+  name: string;
+  version: string;
+  public_url: string;
+  docs_url: string;
+  languages: Record<string, string>;
+  estimates: {
+    device: "gpu" | "cpu";
+    transcription_provider: string;
+    transcription_model: string;
+    analysis_rtf: number;
+    llm_seconds: number;
+    render_rtf: number;
+    long_recording_seconds: number;
+  };
+}
+
+export interface DraftUpdate {
+  decisions: { id: string; accepted: boolean }[];
+  title?: string | null;
+  voice_mode?: VoiceMode | null;
 }

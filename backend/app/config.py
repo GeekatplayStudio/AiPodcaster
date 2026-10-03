@@ -23,12 +23,14 @@ ALLOWED_ORIGINS = [
     if origin.strip()
 ]
 SECRET_MASK = "••••••••"
+PUBLIC_URL = os.environ.get("AIPODCASTER_PUBLIC_URL", "http://127.0.0.1:8000").rstrip("/")
 
 
 class TranscriptionSettings(BaseModel):
     provider: str = Field(default="faster_whisper", pattern="^(faster_whisper|openai|fake)$")
     model: str = Field(default="small", max_length=100)
     language: str | None = Field(default=None, max_length=10)
+    verbatim: bool = True
 
 
 class LanguageModelSettings(BaseModel):
@@ -75,7 +77,7 @@ class FactCheckSettings(BaseModel):
     embedding_provider: str = Field(default="local", pattern="^(local|openai)$")
     embedding_model: str = Field(default="text-embedding-3-small", max_length=100)
     online_enabled: bool = True
-    wikipedia_language: str = Field(default="en", max_length=10, pattern="^[a-z-]+$")
+    wikipedia_language: str = Field(default="auto", max_length=10, pattern="^[a-z-]+$")
     max_claims: int = Field(default=40, ge=1, le=200)
     evidence_per_claim: int = Field(default=4, ge=1, le=10)
     min_similarity: float = Field(default=0.35, ge=0, le=1)

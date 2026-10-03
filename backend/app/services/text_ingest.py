@@ -13,7 +13,7 @@ from ..schemas import TranscriptSegment, Word
 
 TIMESTAMP = re.compile(r"^\s*[\[(]?(?P<h>\d{1,2}:)?(?P<m>\d{1,2}):(?P<s>\d{2})(?:[.,]\d{1,3})?[\])]?\s*[-–—:]?\s*")
 SRT_TIME = re.compile(r"(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})\s*-->\s*(\d{1,2}):(\d{2}):(\d{2})[.,](\d{1,3})")
-SPEAKER = re.compile(r"^\s*(?:\[[^\]]+\]\s*)?([A-Z][A-Za-z0-9 ._'-]{0,30}):\s+(?=\S)")
+SPEAKER = re.compile(r"^\s*(?:\[[^\]]+\]\s*)?([A-ZÀ-ÖØ-ÞА-ЯЁІЇЄҐΑ-Ω][\w ._'-]{0,30}):\s+(?=\S)")
 SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])")
 MAX_WORDS_PER_SEGMENT = 40
 

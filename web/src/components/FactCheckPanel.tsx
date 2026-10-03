@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ragApi } from "../api/rag";
 import type { FactCheck, ProcessingJob, Project, Verdict } from "../api/types";
 import { formatTime } from "../lib/format";
@@ -12,6 +13,7 @@ interface Props {
   onError: (message: string) => void;
 }
 
+// English labels; translated at render time (keys live in locales/*/job.json).
 const VERDICT_LABEL: Record<Verdict, string> = { supported: "Supported", contradicted: "Contradicted", unsupported: "No evidence", uncertain: "Uncertain" };
 const VERDICT_CLASS: Record<Verdict, string> = { supported: "ok", contradicted: "fail", unsupported: "", uncertain: "review" };
 
@@ -21,6 +23,7 @@ export function sortChecks(checks: FactCheck[]): FactCheck[] {
 }
 
 export function FactCheckPanel({ job, project, projects, onJob, onSeek, onError }: Props) {
+  const { t } = useTranslation("job");
   const report = job.verification;
   const [useLibraries, setUseLibraries] = useState(true);
   const [useOnline, setUseOnline] = useState(project?.online_fact_check ?? false);
@@ -34,7 +37,7 @@ export function FactCheckPanel({ job, project, projects, onJob, onSeek, onError 
     try {
       onJob(await ragApi.verify(job.id, { use_libraries: useLibraries && hasLibraries, use_online: useOnline }));
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Could not start fact check");
+      onError(err instanceof Error ? err.message : t("Could not start fact check"));
     } finally {
       setBusy(false);
     }
@@ -44,7 +47,7 @@ export function FactCheckPanel({ job, project, projects, onJob, onSeek, onError 
     try {
       onJob(await ragApi.setJobProject(job.id, projectId || null));
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Could not change project");
+      onError(err instanceof Error ? err.message : t("Could not change project"));
     }
   }
 
@@ -52,46 +55,52 @@ export function FactCheckPanel({ job, project, projects, onJob, onSeek, onError 
     try {
       onJob(await ragApi.factCheckDecisions(job.id, [{ id: check.id, dismissed }]));
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Could not update");
+      onError(err instanceof Error ? err.message : t("Could not update"));
     }
   }
 
   const open = report.checks.filter((c) => c.flagged && !c.dismissed).length;
   const visible = showAll ? sortChecks(report.checks) : sortChecks(report.checks).filter((c) => c.flagged || c.verdict === "uncertain");
+  const librariesHint = project
+    ? project.linked_project_ids.length
+      ? t("Libraries: {{libraries}} + {{linked}} linked project(s)", { libraries: project.library_ids.length, linked: project.linked_project_ids.length })
+      : t("Libraries: {{libraries}}", { libraries: project.library_ids.length })
+    : t("Assign a project to use its knowledge libraries.");
+  const sources = `${report.used_libraries.join(", ") || t("none")}${report.used_online ? " + Wikipedia" : ""}`;
 
   return (
     <section className="card" aria-labelledby="factcheck-title">
       <div className="card-title">
-        <h2 id="factcheck-title">Fact check</h2>
-        {report.status === "complete" && <span className={`badge ${open ? "fail" : "ok"}`}>{open ? `${open} flagged` : "No open flags"}</span>}
+        <h2 id="factcheck-title">{t("Fact check")}</h2>
+        {report.status === "complete" && <span className={`badge ${open ? "fail" : "ok"}`}>{open ? t("{{flagged}} flagged", { flagged: open }) : t("No open flags")}</span>}
         {running && (
           <span className="badge busy">
-            <span className="spinner" aria-hidden="true" style={{ width: 10, height: 10 }} /> Checking…
+            <span className="spinner" aria-hidden="true" style={{ width: 10, height: 10 }} /> {t("Checking…")}
           </span>
         )}
       </div>
       <div className="field">
-        <label htmlFor="job-project">Project</label>
+        <label htmlFor="job-project">{t("Project")}</label>
         <select id="job-project" value={job.project_id ?? ""} onChange={(e) => void assignProject(e.target.value)} disabled={running}>
-          <option value="">No project (library check unavailable)</option>
+          <option value="">{t("No project (library check unavailable)")}</option>
           {projects.map((p) => (
             <option key={p.id} value={p.id}>
               {p.name}
             </option>
           ))}
         </select>
-        <span className="hint">{project ? `Libraries: ${project.library_ids.length}${project.linked_project_ids.length ? ` + ${project.linked_project_ids.length} linked project(s)` : ""}` : "Assign a project to use its knowledge libraries."}</span>
+        <span className="hint">{librariesHint}</span>
       </div>
       <label className="checkbox" style={{ marginBottom: 6 }}>
         <input type="checkbox" checked={useLibraries && hasLibraries} disabled={!hasLibraries || running} onChange={(e) => setUseLibraries(e.target.checked)} />
-        Check against project libraries
+        {t("Check against project libraries")}
       </label>
       <label className="checkbox" style={{ marginBottom: 12 }}>
         <input type="checkbox" checked={useOnline} disabled={running} onChange={(e) => setUseOnline(e.target.checked)} />
-        Check against Wikipedia (online)
+        {t("Check against Wikipedia (online)")}
       </label>
       <button type="button" className="btn primary" style={{ width: "100%" }} onClick={() => void run()} disabled={busy || running || (!(useLibraries && hasLibraries) && !useOnline)}>
-        {report.status === "complete" ? "Run fact check again" : "Run fact check"}
+        {report.status === "complete" ? t("Run fact check again") : t("Run fact check")}
       </button>
       {report.status === "failed" && (
         <div className="alert error" role="alert" style={{ marginTop: 10 }}>
@@ -101,16 +110,19 @@ export function FactCheckPanel({ job, project, projects, onJob, onSeek, onError 
       {report.status === "complete" && (
         <>
           <p className="muted small" style={{ marginTop: 10 }}>
-            {report.claims_checked} claims checked · sources: {report.used_libraries.join(", ") || "none"}
-            {report.used_online ? " + Wikipedia" : ""} · judge: {report.judge}
+            {t("{{claims}} claims checked · sources: {{sources}} · judge: {{judge}}", { claims: report.claims_checked, sources, judge: report.judge })}
           </p>
-          {report.judge.startsWith("heuristic") && <div className="alert warn small">Heuristic mode compares numbers and keywords only. Configure a language model in Settings for full reasoning.</div>}
+          {report.judge.startsWith("heuristic") && <div className="alert warn small">{t("Heuristic mode compares numbers and keywords only. Configure a language model in Settings for full reasoning.")}</div>}
           <div className="btn-row" style={{ marginBottom: 8 }}>
             <button type="button" className="btn sm" onClick={() => setShowAll((v) => !v)}>
-              {showAll ? "Show flagged only" : `Show all ${report.checks.length}`}
+              {showAll ? t("Show flagged only") : t("Show all {{total}}", { total: report.checks.length })}
             </button>
           </div>
-          {visible.length === 0 && <p className="muted">Nothing flagged. {report.checks.length ? "Every checkable claim was supported or had no conflicting evidence." : ""}</p>}
+          {visible.length === 0 && (
+            <p className="muted">
+              {t("Nothing flagged.")} {report.checks.length ? t("Every checkable claim was supported or had no conflicting evidence.") : ""}
+            </p>
+          )}
           <div className="proposal-list">
             {visible.map((check) => (
               <FactCheckItem key={check.id} check={check} onSeek={onSeek} onDismiss={dismiss} />
@@ -123,14 +135,15 @@ export function FactCheckPanel({ job, project, projects, onJob, onSeek, onError 
 }
 
 function FactCheckItem({ check, onSeek, onDismiss }: { check: FactCheck; onSeek: (ms: number) => void; onDismiss: (check: FactCheck, dismissed: boolean) => void }) {
+  const { t } = useTranslation("job");
   const [openEvidence, setOpenEvidence] = useState(false);
   return (
     <div className={`proposal${check.dismissed ? " rejected" : ""}`} style={{ gridTemplateColumns: "1fr", borderColor: check.flagged && !check.dismissed ? "var(--danger)" : undefined }}>
       <div className="btn-row" style={{ justifyContent: "space-between" }}>
         <span className={`badge ${VERDICT_CLASS[check.verdict]}`}>
-          {VERDICT_LABEL[check.verdict]} · {Math.round(check.confidence * 100)}%
+          {t(VERDICT_LABEL[check.verdict])} · {Math.round(check.confidence * 100)}%
         </span>
-        <button type="button" className="time" onClick={() => onSeek(check.start_ms)} title="Jump to this point">
+        <button type="button" className="time" onClick={() => onSeek(check.start_ms)} title={t("Jump to this point")}>
           ▶ {formatTime(check.start_ms)}
         </button>
       </div>
@@ -139,19 +152,19 @@ function FactCheckItem({ check, onSeek, onDismiss }: { check: FactCheck; onSeek:
         <span style={{ display: "block", whiteSpace: "normal" }}>{check.explanation}</span>
         {check.suggested_correction && (
           <span style={{ display: "block", whiteSpace: "normal", color: "var(--success)" }}>
-            Suggested: {check.suggested_correction}
+            {t("Suggested: {{correction}}", { correction: check.suggested_correction })}
           </span>
         )}
       </div>
       <div className="btn-row">
         {check.evidence.length > 0 && (
           <button type="button" className="btn sm" onClick={() => setOpenEvidence((v) => !v)}>
-            {openEvidence ? "Hide evidence" : `Evidence (${check.evidence.length})`}
+            {openEvidence ? t("Hide evidence") : t("Evidence ({{total}})", { total: check.evidence.length })}
           </button>
         )}
         {check.flagged && (
           <button type="button" className="btn sm" onClick={() => onDismiss(check, !check.dismissed)}>
-            {check.dismissed ? "Re-open" : "Dismiss"}
+            {check.dismissed ? t("Re-open") : t("Dismiss")}
           </button>
         )}
       </div>
@@ -167,7 +180,7 @@ function FactCheckItem({ check, onSeek, onDismiss }: { check: FactCheck; onSeek:
                 evidence.source
               )}
             </strong>{" "}
-            <span className="muted">({Math.round(evidence.score * 100)}% match)</span>
+            <span className="muted">{t("({{score}}% match)", { score: Math.round(evidence.score * 100) })}</span>
             <br />
             {evidence.excerpt.slice(0, 500)}
           </blockquote>

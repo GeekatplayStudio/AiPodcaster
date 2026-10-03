@@ -36,8 +36,8 @@ export const episodesApi = {
     const query = params.toString();
     return json<JobSummary[]>(`/v1/jobs${query ? `?${query}` : ""}`);
   },
-  createFromText: (text: string, name: string, projectId: string | null, wordsPerMinute: number) =>
-    json<ProcessingJob>("/v1/jobs/text", { method: "POST", body: JSON.stringify({ text, name, project_id: projectId, words_per_minute: wordsPerMinute }) }),
+  createFromText: (text: string, name: string, projectId: string | null, wordsPerMinute: number, language: string | null = null) =>
+    json<ProcessingJob>("/v1/jobs/text", { method: "POST", body: JSON.stringify({ text, name, project_id: projectId, words_per_minute: wordsPerMinute, language }) }),
   uploadTextFile: (file: File, projectId: string | null, wordsPerMinute: number) => {
     const form = new FormData();
     form.append("file", file, file.name);
@@ -47,7 +47,8 @@ export const episodesApi = {
   },
   importUrl: (url: string, projectId: string | null) => json<ProcessingJob>("/v1/jobs/url", { method: "POST", body: JSON.stringify({ url, project_id: projectId }) }),
   importLocalPath: (path: string, projectId: string | null) => json<ProcessingJob>("/v1/jobs/local", { method: "POST", body: JSON.stringify({ path, project_id: projectId, copy_file: true }) }),
-  updateMeta: (id: string, body: { display_name?: string; archived?: boolean; project_id?: string | null; clear_project?: boolean; tags?: string[]; notes?: string }) =>
+  reanalyze: (id: string) => json<ProcessingJob>(`/v1/jobs/${encodeURIComponent(id)}/reanalyze`, { method: "POST" }),
+  updateMeta: (id: string, body: { language?: string; display_name?: string; archived?: boolean; project_id?: string | null; clear_project?: boolean; tags?: string[]; notes?: string }) =>
     json<ProcessingJob>(`/v1/jobs/${encodeURIComponent(id)}/meta`, { method: "PATCH", body: JSON.stringify(body) }),
   reorder: (ids: string[]) => json<JobSummary[]>("/v1/jobs/reorder", { method: "POST", body: JSON.stringify({ ids }) }),
   bulk: (ids: string[], action: "archive" | "unarchive" | "delete") => json<JobSummary[]>("/v1/jobs/bulk", { method: "POST", body: JSON.stringify({ ids, action }) }),

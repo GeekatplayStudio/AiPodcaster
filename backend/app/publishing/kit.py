@@ -11,6 +11,7 @@ from pathlib import Path
 from ..config import AppSettings
 from ..providers import llm
 from ..schemas import ProcessingJob, PublishKit
+from ..services.llm import language_instruction
 
 KIT_PROMPT = (
     "You are a podcast marketer. Using the transcript summary and chapters, write distribution copy. Return JSON with keys: "
@@ -65,7 +66,7 @@ def generate_kit(settings: AppSettings, job: ProcessingJob) -> PublishKit:
         f"Chapters: {json.dumps(job.show_notes.chapters)}\nDuration: {duration}\n\nTranscript excerpt:\n{excerpt}"
     )
     try:
-        raw = llm.complete(settings, KIT_PROMPT + body, json_mode=True)
+        raw = llm.complete(settings, KIT_PROMPT + language_instruction(job.language) + "\n\n" + body, json_mode=True)
         match = re.search(r"\{.*\}", raw, re.S)
         data = json.loads(match.group(0)) if match else {}
     except Exception:  # noqa: BLE001 - never block publishing on the model

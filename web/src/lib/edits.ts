@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import type { EditKind, EditProposal, TranscriptSegment, Word } from "../api/types";
 
 export interface WordView {
@@ -64,8 +65,9 @@ export function segmentDirty(original: TranscriptSegment[], edited: TranscriptSe
 export function validateFile(file: File, maxBytes: number): string | null {
   const allowed = [".wav", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".webm", ".mp4", ".mov", ".wma", ".aiff", ".aif"];
   const lower = file.name.toLowerCase();
-  if (!allowed.some((ext) => lower.endsWith(ext))) return `Unsupported file type. Use ${allowed.join(", ")}.`;
-  if (file.size === 0) return "The file is empty.";
-  if (file.size > maxBytes) return `File is larger than the ${Math.round(maxBytes / 1024 / 1024)} MB limit.`;
+  const t = (key: string, options?: Record<string, unknown>) => i18n.t(key, { ns: "library", ...options });
+  if (!allowed.some((ext) => lower.endsWith(ext))) return t("Unsupported file type. Use {{types}}.", { types: allowed.join(", ") });
+  if (file.size === 0) return t("The file is empty.");
+  if (file.size > maxBytes) return t("File is larger than the {{size}} MB limit.", { size: Math.round(maxBytes / 1024 / 1024) });
   return null;
 }

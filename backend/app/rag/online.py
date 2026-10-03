@@ -48,9 +48,10 @@ def _wikipedia_extract(language: str, title: str, max_chars: int = 12_000) -> tu
     return "", ""
 
 
-def wikipedia_evidence(settings: AppSettings, claim: str, limit: int = 3) -> list[OnlinePassage]:
+def wikipedia_evidence(settings: AppSettings, claim: str, limit: int = 3, language: str | None = None) -> list[OnlinePassage]:
     """Search Wikipedia for the claim, then rank passages with the local embedder."""
-    language = settings.fact_check.wikipedia_language or "en"
+    configured = settings.fact_check.wikipedia_language or "auto"
+    language = (language or "en").split("-")[0] if configured == "auto" else configured
     query = " ".join(keywords(claim, 6)) or claim[:100]
     try:
         titles = _wikipedia_search(language, query)

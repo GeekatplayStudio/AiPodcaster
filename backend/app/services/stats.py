@@ -6,9 +6,10 @@ from collections import Counter
 
 from ..rag.claims import STOP
 from ..schemas import EditKind, ProcessingJob
+from . import languages
 from .analysis import DEFAULT_FILLERS, apply_cuts_to_text
 
-WORD = re.compile(r"[A-Za-z][A-Za-z'’-]+")
+WORD = re.compile(r"[^\W\d_][\w'’-]*", re.UNICODE)
 BUCKET_MS = 60_000
 
 
@@ -23,7 +24,8 @@ def compute_stats(job: ProcessingJob) -> dict:
     final_segments = apply_cuts_to_text(job.segments, job.proposals)
     words_final = sum(len(s.text.split()) for s in final_segments)
     tokens = [t.lower() for s in job.segments for t in WORD.findall(s.text)]
-    content_tokens = [t for t in tokens if t not in STOP and t not in DEFAULT_FILLERS and len(t) > 2]
+    fillers = DEFAULT_FILLERS | set(languages.strong_fillers(job.language)) | set(languages.light_fillers(job.language))
+    content_tokens = [t for t in tokens if t not in STOP and t not in fillers and len(t) > 2 and not languages.elongation_kind(t)]
     minutes = max(duration / 60_000, 1 / 60)
 
     words_per_minute = [0] * buckets
@@ -53,7 +55,7 @@ def compute_stats(job: ProcessingJob) -> dict:
     pauses = [p.end_ms - p.start_ms for p in job.proposals if p.kind == EditKind.SILENCE]
     sentence_lengths = [len(s.text.split()) for s in job.segments if s.text]
     verdicts = Counter(c.verdict.value for c in job.verification.checks)
-    speakers = Counter(m.group(1) for s in job.segments if (m := re.match(r"^([A-Z][A-Za-z0-9 ._'-]{0,30}):\s", s.text)))
+    speakers = Counter(m.group(1) for s in job.segments if (m := re.match(r"^([A-ZÀ-ÖØ-ÞА-ЯЁІЇЄҐΑ-Ω][\w ._'-]{0,30}):\s", s.text)))
     gaps = [b.start_ms - a.end_ms for a, b in zip(words_original, words_original[1:], strict=False) if 0 < b.start_ms - a.end_ms < 10_000]
 
     return {

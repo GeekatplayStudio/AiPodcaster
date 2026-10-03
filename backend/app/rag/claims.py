@@ -12,12 +12,18 @@ from dataclasses import dataclass
 from ..config import AppSettings
 from ..providers import llm
 from ..schemas import TranscriptSegment
+from ..services.languages import all_stopwords
 
 NUMBER = re.compile(r"\b\d[\d,.]*\s*(%|percent|million|billion|thousand|hundred|km|miles?|metres?|meters?|feet|years?|months?|weeks?|days?|hours?|minutes?|seconds?|kg|pounds?|tons?|dollars?|euros?|people|copies|times)?\b", re.I)
 YEAR = re.compile(r"\b(1[5-9]\d{2}|20\d{2})\b")
 ASSERTIVE = re.compile(r"\b(is|are|was|were|has|have|had|invented|founded|discovered|born|died|won|costs?|measures?|contains?|causes?|means|located|largest|smallest|first|only)\b", re.I)
-OPINION = re.compile(r"\b(i think|i feel|i believe|in my opinion|maybe|probably|i guess|kind of|sort of|you know|let's|welcome|thanks?)\b", re.I)
-STOP = set("the a an and or but so to of in on for with at by from is are was were be been this that these those it its as if then than there here what which who how when where why not no".split())
+OPINION = re.compile(
+    r"\b(i think|i feel|i believe|in my opinion|maybe|probably|i guess|kind of|sort of|you know|let's|welcome|thanks?|"
+    r"я думаю|мне кажется|по-моему|наверное|может быть|спасибо|добро пожаловать|creo que|me parece|quizás|gracias|bienvenidos|"
+    r"ich glaube|ich denke|vielleicht|danke|willkommen|je pense|je crois|peut-être|merci|bienvenue|penso che|forse|grazie|acho que|talvez|obrigad[oa])\b",
+    re.I,
+)
+STOP = set("the a an and or but so to of in on for with at by from is are was were be been this that these those it its as if then than there here what which who how when where why not no".split()) | set(all_stopwords())
 PROMPT = (
     "Extract factual, verifiable claims from this podcast transcript. Ignore opinions, greetings, jokes and questions. "
     "Rewrite each claim as a short self-contained sentence (resolve pronouns). Return JSON: {\"claims\": [{\"segment_id\": int, \"claim\": str}]}. "
@@ -75,12 +81,12 @@ def heuristic_claims(segments: list[TranscriptSegment], limit: int) -> list[Clai
     return chosen
 
 
-def llm_claims(settings: AppSettings, segments: list[TranscriptSegment], limit: int) -> list[Claim] | None:
+def llm_claims(settings: AppSettings, segments: list[TranscriptSegment], limit: int, language: str | None = None) -> list[Claim] | None:
     provider = settings.language_model.provider
     if provider == "none" or not llm.is_configured(settings):
         return None
     body = "\n".join(f"{s.id} | {s.text}" for s in segments)[:80_000]
-    prompt = PROMPT.replace("{limit}", str(limit)) + body
+    prompt = PROMPT.replace("{limit}", str(limit)) + body + "\n\nKeep each claim in the transcript's language."
     try:
         raw = llm.complete(settings, prompt, json_mode=True)
         match = re.search(r"\{.*\}", raw, re.S)
@@ -101,9 +107,9 @@ def llm_claims(settings: AppSettings, segments: list[TranscriptSegment], limit: 
     return claims[:limit] or None
 
 
-def extract_claims(settings: AppSettings, segments: list[TranscriptSegment]) -> tuple[list[Claim], str]:
+def extract_claims(settings: AppSettings, segments: list[TranscriptSegment], language: str | None = None) -> tuple[list[Claim], str]:
     limit = settings.fact_check.max_claims
-    via_llm = llm_claims(settings, segments, limit)
+    via_llm = llm_claims(settings, segments, limit, language)
     if via_llm:
         return via_llm, settings.language_model.provider
     return heuristic_claims(segments, limit), "heuristic"

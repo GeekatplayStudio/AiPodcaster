@@ -12,14 +12,15 @@ from pathlib import Path
 from uuid import UUID
 
 from ..config import MAX_DURATION_SECONDS, AppSettings, settings_store
-from ..schemas import EditKind, JobStage, OutputFile, ProcessingJob, VoiceMode
+from ..schemas import EditKind, JobStage, OutputFile, ProcessingJob, VoiceMode, utc_now
 from ..storage import JobStore, job_store
-from . import analysis, audio, llm, publish, speech
+from . import analysis, audio, estimates, llm, publish, speech
 from .transcription import TranscriptionError, build_provider
 
 log = logging.getLogger("aipodcaster.pipeline")
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="media")
 _active: set[UUID] = set()
+_pending: dict[UUID, str] = {}
 _active_lock = threading.Lock()
 
 
@@ -46,13 +47,32 @@ def canonical_wav(store: JobStore, job_id: UUID) -> Path:
     return store.job_dir(job_id) / "canonical.wav"
 
 
-def run_analysis(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> ProcessingJob:
-    """Synchronous analysis stage (ingest, transcribe, propose)."""
+def _guard(store: JobStore, job_id: UUID, step) -> bool:  # noqa: ANN001 - callable(job) -> None
+    """Run one pipeline step; any failure marks the job failed and returns False."""
     job = store.get(job_id)
-    settings = settings or settings_store.get()
     try:
+        step(job)
+        return store.get(job_id).stage != JobStage.FAILED
+    except (audio.AudioError, TranscriptionError, speech.SpeechError, PipelineError, OSError, ValueError) as error:
+        _fail(store, store.get(job_id), error)
+    except Exception as error:  # noqa: BLE001 - keep the worker alive
+        _fail(store, store.get(job_id), error)
+    return False
+
+
+def default_title(job: ProcessingJob) -> str:
+    return job.display_name or Path(job.asset_name).stem.replace("_", " ").replace("-", " ").strip().title() or "Episode"
+
+
+def ingest_step(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> bool:
+    settings = settings or settings_store.get()
+
+    def step(job: ProcessingJob) -> None:
+        job.processing_started_at, job.error = utc_now(), None
         job = _update(store, job, JobStage.INGEST, 5, "Validating and converting media")
         source = source_path(store, job.id)
+        if not source.exists():
+            raise PipelineError("The source recording is missing")
         if not audio.looks_like_media(source):
             raise PipelineError("The uploaded file does not look like a supported audio or video file")
         info = audio.probe(source)
@@ -60,32 +80,64 @@ def run_analysis(job_id: UUID, store: JobStore = job_store, settings: AppSetting
             raise PipelineError("Could not determine the recording length")
         if info.duration_ms > MAX_DURATION_SECONDS * 1000:
             raise PipelineError(f"Recording exceeds the {MAX_DURATION_SECONDS // 60} minute limit")
+        info.size_bytes = info.size_bytes or job.media.size_bytes
         job.media = info
+        job.eta_seconds = estimates.analysis_seconds(settings, info.duration_ms / 1000)
+        job = store.save(job)
         wav = audio.to_wav(source, canonical_wav(store, job.id))
-        wav16 = audio.to_wav_16k(source, store.job_dir(job.id) / "speech16k.wav")
+        audio.to_wav_16k(source, store.job_dir(job.id) / "speech16k.wav")
         loudness = audio.measure_loudness(wav, settings.cleanup.target_lufs)
         job.quality.input_lufs = loudness["input_i"]
         job.quality.original_duration_ms = info.duration_ms
+        _update(store, job, JobStage.INGEST, 20, "Audio prepared")
 
+    return _guard(store, job_id, step)
+
+
+def transcribe_step(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> bool:
+    settings = settings or settings_store.get()
+
+    def step(job: ProcessingJob) -> None:
         job = _update(store, job, JobStage.TRANSCRIBE, 25, f"Transcribing with {settings.transcription.provider}")
-        provider = build_provider(settings)
-        result = provider.transcribe(wav16)
+        provider = build_provider(settings, job.language_override)
+        result = provider.transcribe(store.job_dir(job.id) / "speech16k.wav")
         if not result.segments:
             raise PipelineError("No speech was detected in the recording")
-        job.segments, job.language, job.transcription_provider = result.segments, result.language, result.provider
+        job.segments, job.transcription_provider = result.segments, result.provider
+        job.language = job.language_override or result.language
+        _update(store, job, JobStage.TRANSCRIBE, 65, "Transcript ready")
 
+    return _guard(store, job_id, step)
+
+
+def propose_step(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> bool:
+    settings = settings or settings_store.get()
+
+    def step(job: ProcessingJob) -> None:
         job = _update(store, job, JobStage.PROPOSE_EDITS, 70, "Analysing fillers, repeats, profanity and pauses")
-        silences = audio.detect_silences(wav, min_ms=max(300, settings.cleanup.max_pause_ms // 2)) if settings.cleanup.tighten_silence else []
-        job.proposals = analysis.build_proposals(job.segments, silences, settings.cleanup, info.duration_ms)
-        job.show_notes = llm.generate_show_notes(settings, job.segments, Path(job.asset_name).stem.replace("_", " ").replace("-", " ").title())
+        silences = []
+        wav = canonical_wav(store, job.id)
+        if settings.cleanup.tighten_silence and wav.exists():
+            silences = audio.detect_silences(wav, min_ms=max(300, settings.cleanup.max_pause_ms // 2))
+        job.proposals = analysis.build_proposals(job.segments, silences, settings.cleanup, job.media.duration_ms, job.language)
+        job = _update(store, job, JobStage.PROPOSE_EDITS, 85, "Writing show notes")
+        job.show_notes = llm.generate_show_notes(settings, job.segments, default_title(job), job.language)
         job.error = None
-        return _update(store, job, JobStage.WAITING_FOR_APPROVAL, 100, f"{len(job.proposals)} suggestions ready for review")
-    except (audio.AudioError, TranscriptionError, PipelineError, OSError, ValueError) as error:
-        _fail(store, job, error)
-        return store.get(job.id)
-    except Exception as error:  # noqa: BLE001 - keep the worker alive
-        _fail(store, job, error)
-        return store.get(job.id)
+        _update(store, job, JobStage.WAITING_FOR_APPROVAL, 100, f"{len(job.proposals)} suggestions ready for review")
+
+    return _guard(store, job_id, step)
+
+
+def run_analysis(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> ProcessingJob:
+    """Synchronous analysis (ingest, transcribe, propose) without checkpoints; used by scripts and tests."""
+    for step in (ingest_step, transcribe_step, propose_step):
+        if not step(job_id, store, settings):
+            break
+    return store.get(job_id)
+
+
+def render_step(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> bool:
+    return run_render(job_id, store, settings).stage == JobStage.COMPLETE
 
 
 def run_render(job_id: UUID, store: JobStore = job_store, settings: AppSettings | None = None) -> ProcessingJob:
@@ -95,6 +147,8 @@ def run_render(job_id: UUID, store: JobStore = job_store, settings: AppSettings 
     output_dir = store.output_dir(job.id)
     output_dir.mkdir(exist_ok=True)
     try:
+        job.processing_started_at = utc_now()
+        job.eta_seconds = estimates.render_seconds(settings, job.media.duration_ms / 1000, job.voice_mode == VoiceMode.SYNTHETIC)
         job = _update(store, job, JobStage.RENDER, 10, "Compiling approved edits")
         wav = canonical_wav(store, job.id)
         duration = job.media.duration_ms
@@ -214,21 +268,67 @@ def _retime_chapters(chapters: list[dict], keep: list[tuple[int, int]], mode: Vo
 
 
 def submit(job_id: UUID, stage: str) -> bool:
-    """Queue analysis or render on the worker pool; returns False if already running."""
+    """Queue analysis or render through the checkpointed LangGraph workflow.
+
+    If the job's worker is still finishing (the review stage becomes visible a moment
+    before the worker releases the job), the request is remembered and started as soon
+    as the worker is done, so an early approval is never lost. Returns False in that case.
+    """
+    with _active_lock:
+        if job_id in _active:
+            _pending[job_id] = stage
+            return False
+        _active.add(job_id)
+
+    def task() -> None:
+        from . import workflow
+
+        try:
+            workflow.run(job_id, stage)
+        except Exception:  # noqa: BLE001 - never kill the worker
+            log.exception("Workflow crashed for %s", job_id)
+        finally:
+            _release(job_id)
+
+    _executor.submit(task)
+    return True
+
+
+def _release(job_id: UUID) -> None:
+    with _active_lock:
+        _active.discard(job_id)
+        follow_up = _pending.pop(job_id, None)
+    if follow_up:
+        submit(job_id, follow_up)
+
+
+def submit_resume(job_id: UUID) -> bool:
+    """Resume an interrupted workflow run from its last checkpoint."""
     with _active_lock:
         if job_id in _active:
             return False
         _active.add(job_id)
 
     def task() -> None:
+        from . import workflow
+
         try:
-            (run_analysis if stage == "analysis" else run_render)(job_id)
+            workflow.resume(job_id)
+        except Exception:  # noqa: BLE001
+            log.exception("Resume crashed for %s", job_id)
         finally:
-            with _active_lock:
-                _active.discard(job_id)
+            _release(job_id)
 
     _executor.submit(task)
     return True
+
+
+PROCESSING_STAGES = {JobStage.UPLOADED, JobStage.INGEST, JobStage.TRANSCRIBE, JobStage.PROPOSE_EDITS, JobStage.RENDER}
+
+
+def is_busy(job: ProcessingJob) -> bool:
+    """True while a worker is really processing (not just writing its final checkpoint)."""
+    return is_active(job.id) and job.stage in PROCESSING_STAGES
 
 
 def is_active(job_id: UUID) -> bool:

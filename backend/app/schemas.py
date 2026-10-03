@@ -192,6 +192,11 @@ class ProcessingJob(BaseModel):
     display_name: str = Field(default="", max_length=200)
     source_kind: SourceKind = SourceKind.AUDIO
     source_url: str | None = None
+    language_override: str | None = Field(default=None, max_length=10)
+    auto_named: bool = False
+    pipeline_run: int = 0
+    processing_started_at: datetime | None = None
+    eta_seconds: int | None = None
     archived: bool = False
     order: int = 0
     tags: list[str] = Field(default_factory=list, max_length=30)
@@ -245,6 +250,7 @@ class JobSummary(BaseModel):
 
 class JobMetaUpdate(BaseModel):
     display_name: str | None = Field(default=None, max_length=200)
+    language: str | None = Field(default=None, max_length=10, pattern="^(auto|[a-z]{2,3}(-[A-Za-z]{2,4})?)$")
     archived: bool | None = None
     project_id: UUID | None = None
     clear_project: bool = False
@@ -263,7 +269,8 @@ class BulkRequest(BaseModel):
 
 class TextIngest(BaseModel):
     text: str = Field(min_length=20, max_length=400_000)
-    name: str = Field(default="Pasted transcript", max_length=180)
+    name: str = Field(default="", max_length=180)
+    language: str | None = Field(default=None, max_length=10)
     project_id: UUID | None = None
     words_per_minute: int = Field(default=150, ge=80, le=260)
 
@@ -315,3 +322,11 @@ class LocalPathImport(BaseModel):
     path: str = Field(min_length=3, max_length=1_000)
     project_id: UUID | None = None
     copy_file: bool = True
+
+
+class DraftUpdate(BaseModel):
+    """Autosaved review state: decisions, title and voice choice, without starting a render."""
+
+    decisions: list[ProposalDecision] = Field(default_factory=list, max_length=10_000)
+    title: str | None = Field(default=None, max_length=200)
+    voice_mode: VoiceMode | None = None

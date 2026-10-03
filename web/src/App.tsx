@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "./api/client";
+import { LanguageMenu } from "./components/LanguageMenu";
+import { restoreScroll, saveScroll } from "./lib/session";
 import { JobPage } from "./pages/JobPage";
 import { LibrariesPage } from "./pages/LibrariesPage";
 import { LibraryPage } from "./pages/LibraryPage";
@@ -45,9 +48,20 @@ export function routeHash(route: Route): string {
 export function useRoute(): [Route, (route: Route) => void] {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
   useEffect(() => {
-    const onChange = () => setRoute(parseHash(window.location.hash));
+    let current = window.location.hash;
+    const onScroll = () => saveScroll(current, window.scrollY);
+    const onChange = () => {
+      current = window.location.hash;
+      setRoute(parseHash(current));
+      restoreScroll(current);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
+    restoreScroll(current);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("hashchange", onChange);
+    };
   }, []);
   const navigate = useCallback((next: Route) => {
     window.location.hash = routeHash(next);
@@ -75,33 +89,35 @@ function useApiHealth(): boolean | null {
 }
 
 export function App() {
+  const { t } = useTranslation("library");
   const [route, navigate] = useRoute();
   const apiOk = useApiHealth();
 
   return (
     <div className="app">
       <header className="topbar">
-        <a className="brand" href="#/" aria-label="AiPodcaster home">
+        <a className="brand" href="#/" aria-label={t("AiPodcaster home")}>
           <img src="/favicon.svg" alt="" />
           AiPodcaster
         </a>
         <span className={`api-status${apiOk ? " ok" : ""}`} role="status">
-          {apiOk === null ? "Connecting to API…" : apiOk ? "API online" : "API offline – start the backend"}
+          {apiOk === null ? t("Connecting to API…") : apiOk ? t("API online") : t("API offline – start the backend")}
         </span>
-        <nav className="nav" aria-label="Primary">
+        <nav className="nav" aria-label={t("Primary")}>
           <button type="button" aria-current={["library", "job", "stats", "publish"].includes(route.name) ? "page" : undefined} onClick={() => navigate({ name: "library" })}>
-            Episodes
+            {t("Episodes")}
           </button>
           <button type="button" aria-current={route.name === "projects" ? "page" : undefined} onClick={() => navigate({ name: "projects" })}>
-            Projects
+            {t("Projects")}
           </button>
           <button type="button" aria-current={route.name === "libraries" ? "page" : undefined} onClick={() => navigate({ name: "libraries" })}>
-            Libraries
+            {t("Libraries")}
           </button>
           <button type="button" aria-current={route.name === "settings" ? "page" : undefined} onClick={() => navigate({ name: "settings" })}>
-            Settings
+            {t("Settings")}
           </button>
         </nav>
+        <LanguageMenu />
         <ThemeMenu />
       </header>
       <main className="page">
@@ -116,7 +132,7 @@ export function App() {
       <footer className="footer">
         <span>AiPodcaster</span>
         <span>
-          by <a href="https://www.geekatplay.com" target="_blank" rel="noreferrer">Geekatplay Studio</a> · Vladimir Chopine
+          {t("by")} <a href="https://www.geekatplay.com" target="_blank" rel="noreferrer">Geekatplay Studio</a> · Vladimir Chopine
         </span>
         <a href="https://github.com/GeekatplayStudio/AiPodcaster" target="_blank" rel="noreferrer">
           GitHub

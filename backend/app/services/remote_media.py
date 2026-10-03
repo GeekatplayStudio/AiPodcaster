@@ -16,7 +16,7 @@ from uuid import UUID
 from fastapi import HTTPException
 
 from ..config import MAX_UPLOAD_BYTES
-from ..schemas import JobStage, ProcessingJob
+from ..schemas import JobStage, utc_now
 from ..storage import ALLOWED_EXTENSIONS, JobStore, job_store, safe_asset_name
 
 log = logging.getLogger("aipodcaster.remote")
@@ -94,12 +94,18 @@ def download(url: str, target_dir: Path, progress) -> Path:  # noqa: ANN001 - ca
     return files[0]
 
 
-def run_download(job_id: UUID, url: str, store: JobStore = job_store) -> ProcessingJob:
-    """Background step: fetch the media into the job directory, then hand over to analysis."""
-    from .pipeline import run_analysis, source_path
+def download_step(job_id: UUID, store: JobStore = job_store) -> bool:
+    """Workflow node: fetch linked media into the job directory. Returns False on failure."""
+    from .pipeline import source_path
 
     job = store.get(job_id)
-    job.stage, job.progress, job.message = JobStage.INGEST, 1, "Connecting to link"
+    if source_path(store, job_id).exists():
+        return True
+    if not job.source_url:
+        job.stage, job.error, job.message = JobStage.FAILED, "No source file or link", "Failed"
+        store.save(job)
+        return False
+    job.stage, job.progress, job.message, job.processing_started_at = JobStage.INGEST, 1, "Connecting to link", utc_now()
     store.save(job)
 
     def progress(fraction: float, message: str) -> None:
@@ -108,17 +114,18 @@ def run_download(job_id: UUID, url: str, store: JobStore = job_store) -> Process
         store.save(current)
 
     try:
-        file = download(url, store.job_dir(job_id) / "remote", progress)
+        file = download(job.source_url, store.job_dir(job_id) / "remote", progress)
         shutil.move(str(file), str(source_path(store, job_id)))
         shutil.rmtree(store.job_dir(job_id) / "remote", ignore_errors=True)
         job = store.get(job_id)
         job.media.size_bytes = source_path(store, job_id).stat().st_size
         store.save(job)
+        return True
     except (RemoteMediaError, OSError) as error:
         job = store.get(job_id)
         job.stage, job.error, job.message = JobStage.FAILED, str(error)[:500], "Download failed"
-        return store.save(job)
-    return run_analysis(job_id, store)
+        store.save(job)
+        return False
 
 
 def resolve_local_path(raw: str) -> Path:

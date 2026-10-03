@@ -12,6 +12,7 @@ from collections import Counter
 from ..config import AppSettings
 from ..providers import llm as backend
 from ..schemas import ShowNotes, TranscriptSegment
+from . import languages
 
 STOPWORDS = set(
     "the a an and or but so to of in on for with at by from is are was were be been being this that these those it its i you we they he she them "
@@ -27,7 +28,8 @@ PROMPT = (
 
 
 def _heuristic(segments: list[TranscriptSegment], fallback_title: str) -> ShowNotes:
-    words = [w for s in segments for w in re.findall(r"[a-zA-Z']{3,}", s.text.lower()) if w not in STOPWORDS]
+    stop = STOPWORDS | languages.all_stopwords()
+    words = [w for s in segments for w in re.findall(r"[^\W\d_]{3,}", s.text.lower()) if w not in stop]
     keywords = [word for word, _ in Counter(words).most_common(8)]
     total = max(len(segments), 1)
     chapter_count = min(6, max(1, total // 12))
@@ -84,15 +86,22 @@ def _parse(raw: str, segments: list[TranscriptSegment], fallback: ShowNotes, pro
     )
 
 
-def generate_show_notes(settings: AppSettings, segments: list[TranscriptSegment], fallback_title: str) -> ShowNotes:
+def generate_show_notes(settings: AppSettings, segments: list[TranscriptSegment], fallback_title: str, language: str | None = None) -> ShowNotes:
     fallback = _heuristic(segments, fallback_title)
     provider = settings.language_model.provider
     if provider == "none" or not segments:
         return fallback
-    prompt = PROMPT + _segments_text(segments)
+    prompt = PROMPT + language_instruction(language) + "\n\n" + _segments_text(segments)
     if not backend.is_configured(settings):
         return fallback
     try:
         return _parse(backend.complete(settings, prompt, json_mode=True), segments, fallback, f"{provider}:{backend.model_for(settings)}")
     except Exception:  # noqa: BLE001 - enrichment must never fail the job
         return fallback
+
+
+def language_instruction(language: str | None) -> str:
+    """Tell the model to answer in the transcript's language."""
+    if not language:
+        return "Write every text value in the same language as the transcript."
+    return f"Write every text value in {languages.language_name(language)} (the transcript language)."

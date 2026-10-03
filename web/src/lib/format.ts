@@ -1,3 +1,4 @@
+import i18n from "../i18n";
 import type { EditKind, JobStage } from "../api/types";
 
 export function formatTime(ms: number): string {
@@ -69,4 +70,9 @@ export function stepIndex(stage: JobStage): number {
     case "failed":
       return 0;
   }
+}
+
+/** Locale for dates and numbers: follows the interface language. */
+export function uiLocale(): string {
+  return i18n.resolvedLanguage || i18n.language || "en";
 }

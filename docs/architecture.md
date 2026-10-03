@@ -88,6 +88,27 @@ routers/publishing.py     /v1/publish/*, /v1/jobs/{id}/kit*, /publish, /publish/
 - Charts in the client are dependency-free SVG components (`web/src/components/charts/Charts.tsx`) using the dataviz reference palette as CSS tokens (`--chart-1..6`, status colors), validated for colour-vision separation on both surfaces.
 - Themes are CSS custom properties switched by `data-theme` (light/dark/system) and `data-accent` on `<html>`; see `web/src/lib/theme.ts`.
 
+## Workflow, persistence and languages
+
+```
+services/workflow.py   LangGraph StateGraph + SqliteSaver (data/checkpoints.sqlite), thread id = "<job>#<run>"
+  START ─┬─▶ download ─▶ ingest ─▶ transcribe ─▶ propose ─▶ ⏸ interrupt_before(render) ─▶ render ─▶ END
+         ├─▶ ingest   (source already on disk)
+         └─▶ render   (re-render of an approved episode)
+services/pipeline.py   node bodies: ingest_step, transcribe_step, propose_step, render_step; submit()/submit_resume()
+                       with a pending queue so an approval arriving while the worker finishes is never dropped
+main.py lifespan       workflow.resume_incomplete(): resumes jobs that were processing when the server stopped
+services/languages.py  per-language strong/light fillers, phrases, elongation detection, profanity (anchored stems
+                       for ru/uk), stopwords, Whisper verbatim prompts, text language detection
+services/estimates.py  real-time factors per device/model → eta_seconds on jobs, /v1/info for the client
+services/naming.py     date-based names for generic or missing names
+PUT /v1/jobs/{id}/draft  autosave of review decisions, title and voice without rendering
+```
+
+- The approval step is a genuine LangGraph human-in-the-loop interrupt; the approval endpoint resumes the paused thread instead of starting a new pipeline.
+- Each node persists the job JSON as well as the checkpoint, so the UI keeps polling one source of truth.
+- UI translations use i18next with English source strings as keys (`web/src/i18n`), namespaces per app area and a `common` fallback; `npm run i18n:check` (scripts/check-i18n.mjs) verifies every key exists in every locale and that placeholders match.
+
 ## Abstraction layers
 
 - `TranscriptionProvider`, `SpeechProvider` protocols and the `generate_show_notes` function isolate vendors. Adding a provider means one class and one entry in `build_provider`.

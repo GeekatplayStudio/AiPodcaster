@@ -1,6 +1,7 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { JobSummary, Project } from "../api/types";
-import { formatTime } from "../lib/format";
+import { formatTime, uiLocale } from "../lib/format";
 import { StageBadge } from "./StageBadge";
 
 interface Props {
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export function EpisodeTable({ items, projects, selected, manualOrder, onSelect, onOpen, onRename, onMove, onDrop, onProject }: Props) {
+  const { t } = useTranslation("library");
   const [editing, setEditing] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [dragging, setDragging] = useState<string | null>(null);
@@ -33,21 +35,21 @@ export function EpisodeTable({ items, projects, selected, manualOrder, onSelect,
         <thead>
           <tr>
             <th style={{ width: 32 }}>
-              <span className="sr-only">Select</span>
+              <span className="sr-only">{t("Select")}</span>
             </th>
             {manualOrder && (
               <th style={{ width: 70 }}>
-                <span className="sr-only">Order</span>
+                <span className="sr-only">{t("Order")}</span>
               </th>
             )}
-            <th>Episode</th>
-            <th>Project</th>
-            <th>Length</th>
-            <th>Words</th>
-            <th>Status</th>
-            <th>Updated</th>
+            <th>{t("Episode")}</th>
+            <th>{t("Project")}</th>
+            <th>{t("Length")}</th>
+            <th>{t("Words")}</th>
+            <th>{t("Status")}</th>
+            <th>{t("Updated")}</th>
             <th>
-              <span className="sr-only">Actions</span>
+              <span className="sr-only">{t("Actions")}</span>
             </th>
           </tr>
         </thead>
@@ -63,15 +65,15 @@ export function EpisodeTable({ items, projects, selected, manualOrder, onSelect,
               onDrop={() => dragging && dragging !== item.id && onDrop(dragging, item.id)}
             >
               <td>
-                <input type="checkbox" checked={selected.has(item.id)} onChange={(e) => onSelect(item.id, e.target.checked)} aria-label={`Select ${item.display_name}`} />
+                <input type="checkbox" checked={selected.has(item.id)} onChange={(e) => onSelect(item.id, e.target.checked)} aria-label={t("Select {{name}}", { name: item.display_name })} />
               </td>
               {manualOrder && (
                 <td>
                   <span className="btn-row" style={{ gap: 2 }}>
-                    <button type="button" className="btn sm" onClick={() => onMove(item.id, -1)} disabled={index === 0} aria-label="Move up">
+                    <button type="button" className="btn sm" onClick={() => onMove(item.id, -1)} disabled={index === 0} aria-label={t("Move up")}>
                       ↑
                     </button>
-                    <button type="button" className="btn sm" onClick={() => onMove(item.id, 1)} disabled={index === items.length - 1} aria-label="Move down">
+                    <button type="button" className="btn sm" onClick={() => onMove(item.id, 1)} disabled={index === items.length - 1} aria-label={t("Move down")}>
                       ↓
                     </button>
                   </span>
@@ -89,7 +91,7 @@ export function EpisodeTable({ items, projects, selected, manualOrder, onSelect,
                       if (e.key === "Enter") commit(item);
                       if (e.key === "Escape") setEditing(null);
                     }}
-                    aria-label="Episode name"
+                    aria-label={t("Episode name")}
                   />
                 ) : (
                   <>
@@ -103,21 +105,21 @@ export function EpisodeTable({ items, projects, selected, manualOrder, onSelect,
                         setEditing(item.id);
                         setDraft(item.display_name);
                       }}
-                      aria-label={`Rename ${item.display_name}`}
-                      title="Rename"
+                      aria-label={t("Rename {{name}}", { name: item.display_name })}
+                      title={t("Rename")}
                     >
                       ✎
                     </button>
                     <div className="muted small">
-                      <span className={`badge kind-${item.source_kind === "text" ? "silence" : "repeat"}`}>{item.source_kind === "text" ? "text" : "audio"}</span> {item.asset_name}
-                      {item.tags.length ? ` · ${item.tags.map((t) => `#${t}`).join(" ")}` : ""}
-                      {item.archived ? " · archived" : ""}
+                      <span className={`badge kind-${item.source_kind === "text" ? "silence" : "repeat"}`}>{item.source_kind === "text" ? t("text") : t("audio")}</span> {item.asset_name}
+                      {item.tags.length ? ` · ${item.tags.map((tag) => `#${tag}`).join(" ")}` : ""}
+                      {item.archived ? ` · ${t("archived")}` : ""}
                     </div>
                   </>
                 )}
               </td>
               <td>
-                <select className="input" style={{ minHeight: 30, padding: "2px 6px" }} value={item.project_id ?? ""} onChange={(e) => onProject(item.id, e.target.value || null)} aria-label={`Project for ${item.display_name}`}>
+                <select className="input" style={{ minHeight: 30, padding: "2px 6px" }} value={item.project_id ?? ""} onChange={(e) => onProject(item.id, e.target.value || null)} aria-label={t("Project for {{name}}", { name: item.display_name })}>
                   <option value="">—</option>
                   {projects.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -128,28 +130,28 @@ export function EpisodeTable({ items, projects, selected, manualOrder, onSelect,
               </td>
               <td>
                 {item.duration_ms ? formatTime(item.final_duration_ms || item.duration_ms) : "–"}
-                {item.final_duration_ms && item.final_duration_ms !== item.duration_ms ? <div className="muted small">was {formatTime(item.duration_ms)}</div> : null}
+                {item.final_duration_ms && item.final_duration_ms !== item.duration_ms ? <div className="muted small">{t("was {{time}}", { time: formatTime(item.duration_ms) })}</div> : null}
               </td>
               <td>
-                {item.word_count ? item.word_count.toLocaleString() : "–"}
-                {item.proposal_count ? <div className="muted small">{item.accepted_edits}/{item.proposal_count} edits</div> : null}
+                {item.word_count ? item.word_count.toLocaleString(uiLocale()) : "–"}
+                {item.proposal_count ? <div className="muted small">{t("{{accepted}}/{{total}} edits", { accepted: item.accepted_edits, total: item.proposal_count })}</div> : null}
               </td>
               <td>
                 <StageBadge stage={item.stage} progress={item.progress} />
-                {item.flagged_claims > 0 && <div className="badge fail small" style={{ marginTop: 4 }}>⚑ {item.flagged_claims} fact flags</div>}
-                {item.published > 0 && <div className="badge ok small" style={{ marginTop: 4 }}>published ×{item.published}</div>}
+                {item.flagged_claims > 0 && <div className="badge fail small" style={{ marginTop: 4 }}>⚑ {t("{{count}} fact flags", { count: item.flagged_claims })}</div>}
+                {item.published > 0 && <div className="badge ok small" style={{ marginTop: 4 }}>{t("published ×{{count}}", { count: item.published })}</div>}
               </td>
-              <td className="muted small">{new Date(item.updated_at).toLocaleString()}</td>
+              <td className="muted small">{new Date(item.updated_at).toLocaleString(uiLocale())}</td>
               <td>
                 <div className="btn-row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
                   <button type="button" className="btn sm" onClick={() => onOpen(item.id)}>
-                    Open
+                    {t("Open")}
                   </button>
                   <a className="btn sm" href={`#/jobs/${item.id}/stats`}>
-                    Stats
+                    {t("Stats")}
                   </a>
                   <a className="btn sm" href={`#/jobs/${item.id}/publish`}>
-                    Publish
+                    {t("Publish")}
                   </a>
                 </div>
               </td>

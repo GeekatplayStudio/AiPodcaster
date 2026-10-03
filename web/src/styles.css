@@ -88,7 +88,8 @@ a { color: var(--accent); }
 button, input, select, textarea { font: inherit; color: inherit; }
 code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
 
-.app { display: grid; grid-template-rows: auto 1fr auto; min-height: 100vh; }
+.app { display: grid; grid-template-rows: auto 1fr auto; grid-template-columns: minmax(0, 1fr); min-height: 100vh; }
+.page { min-width: 0; }
 .footer { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; padding: 1rem; color: var(--muted); font-size: 0.8rem; border-top: 1px solid var(--border); }
 .topbar {
   display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
@@ -297,3 +298,27 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: 0.9em; }
 /* Publish */
 .thumb-preview { width: 100%; max-height: 320px; object-fit: contain; border-radius: 10px; border: 1px solid var(--border); background: var(--surface-2); }
 .thumb-placeholder { display: grid; place-items: center; height: 180px; border: 1px dashed var(--border); border-radius: 10px; color: var(--muted); }
+
+/* Language menu, autosave, project prompt, processing */
+.language-menu { display: inline-flex; align-items: center; gap: 4px; font-size: 0.85rem; }
+.language-menu select { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 4px 6px; min-height: 30px; }
+.header-status { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.autosave { font-size: 0.78rem; color: var(--muted); white-space: nowrap; }
+.autosave-saved { color: var(--success); }
+.autosave-error { color: var(--danger); }
+.episode-language { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 0.85rem; margin-top: 4px; }
+.episode-language label { color: var(--muted); }
+.episode-language select { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 3px 6px; min-height: 30px; }
+.modal-backdrop { position: fixed; inset: 0; background: rgb(10 14 24 / 55%); display: grid; place-items: center; z-index: 50; padding: 16px; }
+.modal { width: min(520px, 100%); max-height: calc(100vh - 32px); overflow: auto; }
+.project-banner { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.continue-card { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.long-file { margin-top: 0.75rem; }
+.unsaved-bar { position: sticky; top: 64px; z-index: 4; }
+
+/* Phone widths: keep visually hidden labels inside scroll containers, and let long
+   translated button labels wrap instead of widening the page. */
+.job-table { position: relative; }
+.sr-only { top: 0; left: 0; white-space: nowrap; }
+.btn { white-space: normal; max-width: 100%; text-align: center; }
+.btn.sm, .nav button, .tab { white-space: nowrap; }

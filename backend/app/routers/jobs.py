@@ -7,10 +7,10 @@ from uuid import UUID
 from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 
-from ..config import MAX_UPLOAD_BYTES
+from ..config import MAX_UPLOAD_BYTES, settings_store
 from ..rag.store import project_store
-from ..schemas import ApprovalRequest, FactCheckDecision, JobStage, JobSummary, ProcessingJob, TranscriptUpdate, VerificationStatus, VerifyRequest
-from ..services import pipeline, verification
+from ..schemas import ApprovalRequest, DraftUpdate, FactCheckDecision, JobStage, JobSummary, ProcessingJob, SourceKind, TranscriptUpdate, VerificationStatus, VerifyRequest
+from ..services import analysis, languages, llm, naming, pipeline, verification
 from ..storage import job_store, safe_asset_name
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
@@ -37,7 +37,8 @@ async def create_job(file: UploadFile, project_id: UUID | None = PROJECT_FORM) -
     name = safe_asset_name(file.filename or "")
     if project_id is not None:
         project_store.get(project_id)
-    job = job_store.create(ProcessingJob(asset_name=name, project_id=project_id, message="Uploading"))
+    display = naming.display_name_for(name)
+    job = job_store.create(ProcessingJob(asset_name=name, display_name=display, auto_named=bool(display), project_id=project_id, message="Uploading"))
     target = pipeline.source_path(job_store, job.id)
     written = 0
     try:
@@ -69,7 +70,7 @@ async def get_job(job_id: UUID) -> ProcessingJob:
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_job(job_id: UUID) -> None:
-    if pipeline.is_active(job_id):
+    if pipeline.is_busy(job_store.get(job_id)):
         raise HTTPException(status_code=409, detail="Job is still processing")
     job_store.delete(job_id)
 
@@ -79,10 +80,40 @@ async def reanalyze(job_id: UUID) -> ProcessingJob:
     job = job_store.get(job_id)
     if job.stage in {JobStage.INGEST, JobStage.TRANSCRIBE, JobStage.PROPOSE_EDITS, JobStage.RENDER} and pipeline.is_active(job_id):
         raise HTTPException(status_code=409, detail="Job is still processing")
+    if job.source_kind == SourceKind.TEXT:
+        # Text episodes have no audio to transcribe: re-run the language-aware analysis on the text.
+        settings = settings_store.get()
+        text = " ".join(segment.text for segment in job.segments)
+        job.language = job.language_override or languages.detect_text_language(text) or job.language
+        job.proposals = analysis.build_proposals(job.segments, [], settings.cleanup, job.media.duration_ms, job.language)
+        job.show_notes = llm.generate_show_notes(settings, job.segments, pipeline.default_title(job), job.language)
+        job.stage, job.progress, job.error = JobStage.WAITING_FOR_APPROVAL, 100, None
+        job.message = f"{len(job.proposals)} suggestions ready for review"
+        return job_store.save(job)
     job.stage, job.progress, job.error, job.outputs = JobStage.UPLOADED, 0, None, []
+    job.message = "Queued for analysis"
     job_store.save(job)
     pipeline.submit(job.id, "analysis")
     return job_store.get(job.id)
+
+
+@router.put("/{job_id}/draft", response_model=ProcessingJob)
+async def save_draft(job_id: UUID, body: DraftUpdate) -> ProcessingJob:
+    """Autosave review choices (keep/remove decisions, title, voice) without starting a render."""
+    job = job_store.get(job_id)
+    _require_review_stage(job)
+    valid = {proposal.id: proposal for proposal in job.proposals}
+    unknown = [d.id for d in body.decisions if d.id not in valid]
+    if unknown:
+        raise HTTPException(status_code=422, detail=f"Unknown proposal IDs: {len(unknown)}")
+    for decision in body.decisions:
+        valid[decision.id].accepted = decision.accepted
+    if body.title is not None and body.title.strip():
+        job.show_notes.title = body.title.strip()
+        naming.adopt_title(job, body.title)
+    if body.voice_mode is not None:
+        job.voice_mode = body.voice_mode
+    return job_store.save(job)
 
 
 @router.put("/{job_id}/transcript", response_model=ProcessingJob)
@@ -106,6 +137,7 @@ async def approve_job(job_id: UUID, request: ApprovalRequest) -> ProcessingJob:
     _apply_segment_edits(job, request.segments)
     if request.title.strip():
         job.show_notes.title = request.title.strip()
+        naming.adopt_title(job, request.title)
     job.voice_mode = request.voice_mode
     job.stage, job.progress, job.message, job.error = JobStage.RENDER, 0, "Queued for render", None
     job_store.save(job)

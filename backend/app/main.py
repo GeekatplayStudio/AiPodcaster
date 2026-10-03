@@ -13,9 +13,10 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from .config import ALLOWED_ORIGINS, DATA_DIR
+from .config import ALLOWED_ORIGINS, DATA_DIR, PUBLIC_URL, settings_store
 from .routers import episodes, jobs, libraries, projects, providers, publishing, settings
 from .security import api_key_middleware
+from .services import estimates, languages, workflow
 from .storage import JOBS_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,6 +26,12 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     JOBS_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        resumed = workflow.resume_incomplete()
+        if resumed:
+            logging.getLogger("aipodcaster").info("Resumed %d interrupted job(s)", len(resumed))
+    except Exception:  # noqa: BLE001 - never block startup
+        logging.getLogger("aipodcaster").exception("Could not resume interrupted jobs")
     yield
 
 
@@ -70,6 +77,19 @@ async def security_headers(request: Request, call_next):
 async def unhandled(_: Request, error: Exception) -> JSONResponse:
     logging.getLogger("aipodcaster").exception("Unhandled error: %s", error)
     return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
+@app.get("/v1/info")
+async def info() -> dict:
+    """Public facts the client needs: where the API lives, supported languages, time estimates."""
+    return {
+        "name": "AiPodcaster",
+        "version": app.version,
+        "public_url": PUBLIC_URL,
+        "docs_url": f"{PUBLIC_URL}/docs",
+        "languages": languages.LANGUAGE_NAMES,
+        "estimates": estimates.describe(settings_store.get()),
+    }
 
 
 @app.get("/healthz")

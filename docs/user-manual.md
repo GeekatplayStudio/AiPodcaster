@@ -257,3 +257,38 @@ The **Publish & export** tab prepares everything a hosting service or social net
 ## 17. Themes
 
 Use the **Theme** button in the header to choose light, dark or system mode and one of six accent palettes (Studio blue, Violet, Teal, Sunset, Forest, Monochrome). The choice is stored in the browser.
+
+## 18. Projects, autosave and resuming work
+
+**Project prompt.** When an episode is not in a project, its page asks once whether to create a new project (pre-filled with the episode name) or add it to an existing one. Choose *Not now* to keep working; a slim reminder stays at the top until the episode is filed. Projects keep episodes, fact-check libraries and publishing settings together.
+
+**Autosave.** Keep/remove decisions, the episode title and the voice choice are saved a moment after you change them (the header shows *All changes saved*). Publish copy autosaves too, and a transcript or script pasted into the import box is kept as a draft until you create the episode. Settings have an explicit *Save settings* button and warn about unsaved changes.
+
+**Continue where you left off.** The Episodes page offers the last episode screen you worked on. Scroll positions are remembered per page during a session.
+
+**Resuming after a restart.** Processing runs as a LangGraph workflow (download → prepare → transcribe → analyse → ⏸ your approval → render) with a checkpoint after every step in `data/checkpoints.sqlite`. If the server stops mid-job, it continues from the step it was in when it starts again, so a long transcription is not repeated. Episodes waiting for your approval stay paused until you approve.
+
+**Names.** Episodes without a meaningful name (a pasted transcript without a name, or files like `audio.wav`, `New Recording 3.m4a`, `20261002_174512.mp4`) are named after the date and time, for example *Episode 2026-10-02 17:45*. Rename them any time from the library.
+
+## 19. Languages
+
+**Interface.** Use the 🌐 menu in the header to switch between English, Русский, Українська, Español, Deutsch and Français. Messages produced by the server (for example processing status lines) stay in English.
+
+**Spoken language.** The language of each recording is detected automatically and shown under the episode title. To force another one, choose it in *Spoken language* and press *Re-analyse*. A default for all new recordings can be set under *Settings → Transcription*. Pasted text is detected from its script and common words.
+
+**Hesitations and fillers.** With *Verbatim transcription* on (the default), Whisper is prompted to keep disfluencies it would otherwise drop, in the episode's language. Cleanup then flags:
+
+- interjections per language: *um, uh, hmm* · *э, ээ, эм, хм, ммм* · *euh, bah* · *äh, ähm* · *eh, este* …
+- stretched sounds in any language: *Aaaa, eeee, hmmm, ммм, ээээ, а-а-а, euuuh, ähhh* — but not real words such as the article *a*;
+- context-dependent words (*like, so* · *ну, типа, как бы* · *o sea, pues* · *du coup, en fait* …), suggested but not pre-selected unless stretched (*нууу, sooo*);
+- profanity per language, with stem matching for Russian and Ukrainian that ignores look-alike words.
+
+Show notes, publish copy, claim extraction and fact-check explanations are written in the episode's language; Wikipedia checks use the matching Wikipedia edition (*Settings → Fact checking → Wikipedia language: auto*).
+
+## 20. Long recordings and processing time
+
+Before a long upload (30 minutes or more, or over 1 GB) the app reads the length in your browser and shows the expected processing time for your hardware, with the option to cancel. While an episode is processing, its page shows elapsed time and an estimate of the time remaining. As a guide, local Whisper *small* on a modern GPU needs roughly 5–8 minutes per hour of audio, and several times longer on CPU; show notes with a local Ollama model add a minute or two. Processing continues on the server if you close the tab.
+
+## 21. Ports
+
+`start.ps1` / `start.sh` prefer ports 8000 (API) and 5173 (web). When another program uses one of them (on IPv4 or IPv6), the next free port is used automatically and printed, for example `Web UI: http://localhost:5174`. The chosen ports are saved in `.run/ports.json`; the MCP launcher reads them, and running the start script again while the app is up reports the same URLs. You can also pass preferred ports: `.\scripts\start.ps1 -ApiPort 9000 -WebPort 3000`.

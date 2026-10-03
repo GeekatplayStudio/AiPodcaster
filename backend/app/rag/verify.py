@@ -14,6 +14,7 @@ from uuid import UUID
 from ..config import AppSettings
 from ..providers import llm
 from ..schemas import Evidence, FactCheck, ProcessingJob, Verdict, VerificationReport, VerificationStatus
+from ..services.llm import language_instruction
 from .claims import Claim, extract_claims, figures_in, keywords
 from .index import search
 from .online import wikipedia_evidence
@@ -80,7 +81,7 @@ def heuristic_judge(claim: str, evidence: list[Evidence], min_similarity: float)
     return Verdict.UNCERTAIN, 0.4, f"Related material found in “{best.source}” but it neither clearly confirms nor refutes the claim.", False
 
 
-def llm_judge(settings: AppSettings, items: list[tuple[Claim, list[Evidence]]]) -> list[tuple[Verdict, float, str, str]] | None:
+def llm_judge(settings: AppSettings, items: list[tuple[Claim, list[Evidence]]], language: str | None = None) -> list[tuple[Verdict, float, str, str]] | None:
     provider = settings.language_model.provider
     if provider == "none" or not llm.is_configured(settings):
         return None
@@ -88,7 +89,7 @@ def llm_judge(settings: AppSettings, items: list[tuple[Claim, list[Evidence]]]) 
     for index, (claim, evidence) in enumerate(items):
         quotes = "\n".join(f"  - [{e.source_kind}: {e.source}] {e.excerpt[:700]}" for e in evidence) or "  (no evidence found)"
         blocks.append(f"Claim {index}: {claim.text}\nEvidence:\n{quotes}")
-    prompt = JUDGE_PROMPT + "\n\n".join(blocks)
+    prompt = JUDGE_PROMPT + language_instruction(language) + " Keep verdict values in English.\n\n" + "\n\n".join(blocks)
     try:
         raw = llm.complete(settings, prompt, json_mode=True)
         match = re.search(r"\{.*\}", raw, re.S)
@@ -110,7 +111,7 @@ def llm_judge(settings: AppSettings, items: list[tuple[Claim, list[Evidence]]]) 
 
 def verify_job(job: ProcessingJob, libraries: list[Library], use_online: bool, settings: AppSettings) -> VerificationReport:
     report = VerificationReport(status=VerificationStatus.RUNNING, used_libraries=[lib.name for lib in libraries], used_online=use_online)
-    claims, extractor = extract_claims(settings, job.segments)
+    claims, extractor = extract_claims(settings, job.segments, job.language)
     per_claim = settings.fact_check.evidence_per_claim
     items: list[tuple[Claim, list[Evidence]]] = []
     for claim in claims:
@@ -118,11 +119,11 @@ def verify_job(job: ProcessingJob, libraries: list[Library], use_online: bool, s
         if libraries:
             evidence += _evidence_from_hits(search(libraries, claim.text, settings, limit=per_claim), per_claim)
         if use_online:
-            evidence += [Evidence(source_kind="online", source=f"Wikipedia: {p.title}", url=p.url, excerpt=p.text[:1500], score=p.score) for p in wikipedia_evidence(settings, claim.text, limit=min(3, per_claim))]
+            evidence += [Evidence(source_kind="online", source=f"Wikipedia: {p.title}", url=p.url, excerpt=p.text[:1500], score=p.score) for p in wikipedia_evidence(settings, claim.text, limit=min(3, per_claim), language=job.language)]
         evidence.sort(key=lambda e: e.score, reverse=True)
         items.append((claim, evidence[: per_claim + 2]))
 
-    judged = llm_judge(settings, items) if items else None
+    judged = llm_judge(settings, items, job.language) if items else None
     judge_name = settings.language_model.provider if judged else "heuristic"
     checks: list[FactCheck] = []
     for index, (claim, evidence) in enumerate(items):

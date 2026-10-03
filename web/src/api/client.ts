@@ -1,5 +1,7 @@
 import { authHeaders, getUiApiKey } from "./auth";
-import type { AppSettings, ApprovalRequest, JobSummary, ProcessingJob, ProviderStatus } from "./types";
+import type { ApiInfo, AppSettings, ApprovalRequest, DraftUpdate, JobSummary, ProcessingJob, ProviderStatus } from "./types";
+
+let infoCache: Promise<ApiInfo> | null = null;
 
 export const API_BASE = import.meta.env.VITE_API_BASE ?? "/api";
 
@@ -34,6 +36,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string }>("/healthz"),
+  info: (refresh = false) => {
+    if (refresh || !infoCache) infoCache = request<ApiInfo>("/v1/info").catch((error) => {
+      infoCache = null;
+      throw error;
+    });
+    return infoCache;
+  },
+  saveDraft: (id: string, body: DraftUpdate) => request<ProcessingJob>(`/v1/jobs/${encodeURIComponent(id)}/draft`, { method: "PUT", body: JSON.stringify(body) }),
   listJobs: () => request<JobSummary[]>("/v1/jobs"),
   getJob: (id: string) => request<ProcessingJob>(`/v1/jobs/${encodeURIComponent(id)}`),
   deleteJob: (id: string) => request<void>(`/v1/jobs/${encodeURIComponent(id)}`, { method: "DELETE" }),

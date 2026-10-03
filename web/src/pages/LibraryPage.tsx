@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { api } from "../api/client";
 import { episodesApi } from "../api/episodes";
 import { ragApi } from "../api/rag";
 import type { JobSummary, Project } from "../api/types";
 import { EpisodeTable } from "../components/EpisodeTable";
+import { ContinueCard } from "../components/ContinueCard";
 import { UploadPanel } from "../components/UploadPanel";
 import { DEFAULT_FILTERS, filterEpisodes, groupByProject, moveItem, type EpisodeFilters, type SortKey } from "../lib/episodes";
 import { isProcessing } from "../lib/format";
@@ -20,6 +22,7 @@ function loadFilters(): EpisodeFilters {
 }
 
 export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
+  const { t } = useTranslation("library");
   const [jobs, setJobs] = useState<JobSummary[] | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
   const [filters, setFilters] = useState<EpisodeFilters>(loadFilters);
@@ -34,9 +37,9 @@ export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
       setProjects(projectList);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load episodes");
+      setError(err instanceof Error ? err.message : t("Could not load episodes"));
     }
-  }, []);
+  }, [t]);
 
   const polling = jobs?.some((job) => isProcessing(job.stage)) ?? false;
   useEffect(() => {
@@ -57,7 +60,7 @@ export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
   }, [filters]);
 
   const visible = useMemo(() => (jobs ? filterEpisodes(jobs, filters) : []), [jobs, filters]);
-  const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name ?? "(deleted project)";
+  const projectName = (id: string | null) => projects.find((p) => p.id === id)?.name ?? t("(deleted project)");
   const groups = filters.groupByProject ? groupByProject(visible, projectName) : [{ key: "all", title: "", items: visible }];
   const counts = { total: jobs?.length ?? 0, archived: jobs?.filter((j) => j.archived).length ?? 0, review: jobs?.filter((j) => j.stage === "waiting_for_approval" && !j.archived).length ?? 0 };
 
@@ -68,7 +71,7 @@ export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
       await action();
       await refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Action failed");
+      setError(err instanceof Error ? err.message : t("Action failed"));
     }
   }
 
@@ -90,7 +93,7 @@ export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
 
   async function bulk(action: "archive" | "unarchive" | "delete") {
     if (selected.size === 0) return;
-    if (action === "delete" && !window.confirm(`Delete ${selected.size} episode(s) and all their files? This cannot be undone.`)) return;
+    if (action === "delete" && !window.confirm(t("Delete {{count}} episode(s) and all their files? This cannot be undone.", { count: selected.size }))) return;
     await act(() => episodesApi.bulk([...selected], action));
     setSelected(new Set());
   }
@@ -107,82 +110,83 @@ export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
     <>
       <div className="page-header">
         <div>
-          <h1>Episodes</h1>
+          <h1>{t("Episodes")}</h1>
           <p>
-            {counts.total} episodes · {counts.review} waiting for review · {counts.archived} archived
+            {t("{{total}} episodes · {{review}} waiting for review · {{archived}} archived", { total: counts.total, review: counts.review, archived: counts.archived })}
           </p>
         </div>
         <button type="button" className="btn" onClick={() => setShowUpload((v) => !v)}>
-          {showUpload ? "Hide import" : "New episode"}
+          {showUpload ? t("Hide import") : t("New episode")}
         </button>
       </div>
+      <ContinueCard existingIds={jobs ? jobs.map((job) => job.id) : null} />
       {showUpload && <UploadPanel onUploaded={(job) => onOpen(job.id)} />}
       <section className="card" style={{ marginTop: "1rem" }} aria-labelledby="library-title">
         <div className="card-title">
-          <h2 id="library-title">Library</h2>
+          <h2 id="library-title">{t("Library")}</h2>
           <div className="btn-row">
             <button type="button" className="btn sm" onClick={() => void refresh()}>
-              Refresh
+              {t("Refresh")}
             </button>
           </div>
         </div>
         <div className="filters">
-          <input className="input" type="search" placeholder="Search name, file, tag…" value={filters.query} onChange={(e) => patch({ query: e.target.value })} aria-label="Search episodes" />
-          <select className="input" value={filters.stage} onChange={(e) => patch({ stage: e.target.value as EpisodeFilters["stage"] })} aria-label="Status filter">
-            <option value="all">Any status</option>
-            <option value="needs_review">Needs review</option>
-            <option value="ready">Produced</option>
-            <option value="failed">Failed</option>
+          <input className="input" type="search" placeholder={t("Search name, file, tag…")} value={filters.query} onChange={(e) => patch({ query: e.target.value })} aria-label={t("Search episodes")} />
+          <select className="input" value={filters.stage} onChange={(e) => patch({ stage: e.target.value as EpisodeFilters["stage"] })} aria-label={t("Status filter")}>
+            <option value="all">{t("Any status")}</option>
+            <option value="needs_review">{t("Needs review")}</option>
+            <option value="ready">{t("Produced")}</option>
+            <option value="failed">{t("Failed")}</option>
           </select>
-          <select className="input" value={filters.source} onChange={(e) => patch({ source: e.target.value as EpisodeFilters["source"] })} aria-label="Source filter">
-            <option value="all">Audio & text</option>
-            <option value="audio">Audio</option>
-            <option value="text">Text</option>
+          <select className="input" value={filters.source} onChange={(e) => patch({ source: e.target.value as EpisodeFilters["source"] })} aria-label={t("Source filter")}>
+            <option value="all">{t("Audio & text")}</option>
+            <option value="audio">{t("Audio")}</option>
+            <option value="text">{t("Text")}</option>
           </select>
-          <select className="input" value={filters.projectId} onChange={(e) => patch({ projectId: e.target.value })} aria-label="Project filter">
-            <option value="all">All projects</option>
-            <option value="none">No project</option>
+          <select className="input" value={filters.projectId} onChange={(e) => patch({ projectId: e.target.value })} aria-label={t("Project filter")}>
+            <option value="all">{t("All projects")}</option>
+            <option value="none">{t("No project")}</option>
             {projects.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
           </select>
-          <select className="input" value={filters.sort} onChange={(e) => patch({ sort: e.target.value as SortKey })} aria-label="Sort">
-            <option value="manual">Manual order</option>
-            <option value="updated">Recently updated</option>
-            <option value="created">Newest</option>
-            <option value="name">Name</option>
-            <option value="duration">Longest</option>
-            <option value="words">Most words</option>
+          <select className="input" value={filters.sort} onChange={(e) => patch({ sort: e.target.value as SortKey })} aria-label={t("Sort")}>
+            <option value="manual">{t("Manual order")}</option>
+            <option value="updated">{t("Recently updated")}</option>
+            <option value="created">{t("Newest")}</option>
+            <option value="name">{t("Name")}</option>
+            <option value="duration">{t("Longest")}</option>
+            <option value="words">{t("Most words")}</option>
           </select>
           <label className="checkbox">
-            <input type="checkbox" checked={filters.groupByProject} onChange={(e) => patch({ groupByProject: e.target.checked })} /> Group by project
+            <input type="checkbox" checked={filters.groupByProject} onChange={(e) => patch({ groupByProject: e.target.checked })} /> {t("Group by project")}
           </label>
           <label className="checkbox">
-            <input type="checkbox" checked={filters.flaggedOnly} onChange={(e) => patch({ flaggedOnly: e.target.checked })} /> Fact flags only
+            <input type="checkbox" checked={filters.flaggedOnly} onChange={(e) => patch({ flaggedOnly: e.target.checked })} /> {t("Fact flags only")}
           </label>
           <label className="checkbox">
-            <input type="checkbox" checked={filters.showArchived} onChange={(e) => patch({ showArchived: e.target.checked })} /> Show archived
+            <input type="checkbox" checked={filters.showArchived} onChange={(e) => patch({ showArchived: e.target.checked })} /> {t("Show archived")}
           </label>
         </div>
         {selected.size > 0 && (
-          <div className="bulk-bar" role="toolbar" aria-label="Bulk actions">
-            <strong>{selected.size} selected</strong>
+          <div className="bulk-bar" role="toolbar" aria-label={t("Bulk actions")}>
+            <strong>{t("{{count}} selected", { count: selected.size })}</strong>
             <button type="button" className="btn sm" onClick={() => void bulk("archive")}>
-              Archive
+              {t("Archive")}
             </button>
             <button type="button" className="btn sm" onClick={() => void bulk("unarchive")}>
-              Unarchive
+              {t("Unarchive")}
             </button>
             <button type="button" className="btn sm" onClick={() => void downloadSelected()}>
-              Download kits
+              {t("Download kits")}
             </button>
             <button type="button" className="btn sm danger" onClick={() => void bulk("delete")}>
-              Delete
+              {t("Delete")}
             </button>
             <button type="button" className="btn sm" onClick={() => setSelected(new Set())}>
-              Clear
+              {t("Clear")}
             </button>
           </div>
         )}
@@ -191,13 +195,13 @@ export function LibraryPage({ onOpen }: { onOpen: (id: string) => void }) {
             {error}
           </div>
         )}
-        {jobs === null && !error && <p className="muted">Loading…</p>}
-        {jobs && visible.length === 0 && <div className="empty">{jobs.length === 0 ? "No episodes yet. Import a recording or transcript above." : "Nothing matches the current filters."}</div>}
+        {jobs === null && !error && <p className="muted">{t("Loading…")}</p>}
+        {jobs && visible.length === 0 && <div className="empty">{jobs.length === 0 ? t("No episodes yet. Import a recording or transcript above.") : t("Nothing matches the current filters.")}</div>}
         {groups.map((group) => (
           <div key={group.key}>
             {group.title && (
               <h3 className="group-title">
-                {group.title} <span className="muted small">({group.items.length})</span>
+                {group.key === "none" ? t("No project") : group.title} <span className="muted small">({group.items.length})</span>
               </h3>
             )}
             {group.items.length > 0 && (

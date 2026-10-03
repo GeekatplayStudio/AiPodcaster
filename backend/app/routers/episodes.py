@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import shutil
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from uuid import UUID
 
@@ -13,7 +12,7 @@ from ..config import ALLOW_LOCAL_IMPORT, settings_store
 from ..rag.parsing import ALLOWED_DOCUMENT_EXTENSIONS, ParseError, extract_text
 from ..rag.store import project_store
 from ..schemas import BulkRequest, JobMetaUpdate, JobStage, JobSummary, LocalPathImport, ProcessingJob, ReorderRequest, SourceKind, TextIngest, UrlImport, VoiceMode
-from ..services import analysis, llm, pipeline, remote_media, stats, text_ingest
+from ..services import analysis, estimates, languages, llm, naming, pipeline, remote_media, stats, text_ingest
 from ..storage import SAFE_NAME, job_store, summarise_job
 
 router = APIRouter(prefix="/v1/jobs", tags=["episodes"])
@@ -21,20 +20,24 @@ TEXT_EXTENSIONS = {".txt", ".md", ".markdown", ".srt", ".vtt", ".pdf", ".docx", 
 MAX_TEXT_BYTES = 50 * 1024 * 1024
 
 
-def _create_text_job(text: str, name: str, project_id: UUID | None, wpm: int) -> ProcessingJob:
+def _create_text_job(text: str, name: str, project_id: UUID | None, wpm: int, language: str | None = None) -> ProcessingJob:
     if project_id is not None:
         project_store.get(project_id)
     detected = text_ingest.build_segments(text, wpm)
     if not detected.segments:
         raise HTTPException(status_code=422, detail="No readable sentences were found in the text")
     settings = settings_store.get()
-    job = ProcessingJob(asset_name=name, project_id=project_id, source_kind=SourceKind.TEXT, voice_mode=VoiceMode.SYNTHETIC, message=f"Imported {detected.format} text")
-    job.segments, job.language = detected.segments, settings.transcription.language
+    display = naming.display_name_for(name)
+    asset = naming.file_name_for(display, ".txt") if display else name
+    job = ProcessingJob(asset_name=asset, display_name=display, auto_named=bool(display), project_id=project_id, source_kind=SourceKind.TEXT, voice_mode=VoiceMode.SYNTHETIC, message=f"Imported {detected.format} text")
+    job.language_override = language if language and language != "auto" else None
+    job.segments = detected.segments
+    job.language = job.language_override or languages.detect_text_language(text) or settings.transcription.language
     job.media.duration_ms = detected.estimated_duration_ms
     job.media.codec, job.media.channels, job.media.sample_rate = f"text/{detected.format}", 0, 0
     job.quality.original_duration_ms = detected.estimated_duration_ms
-    job.proposals = analysis.build_proposals(job.segments, [], settings.cleanup, detected.estimated_duration_ms)
-    job.show_notes = llm.generate_show_notes(settings, job.segments, Path(name).stem.replace("_", " ").replace("-", " ").title())
+    job.proposals = analysis.build_proposals(job.segments, [], settings.cleanup, detected.estimated_duration_ms, job.language)
+    job.show_notes = llm.generate_show_notes(settings, job.segments, pipeline.default_title(job), job.language)
     job.stage, job.progress = JobStage.WAITING_FOR_APPROVAL, 100
     job.message = f"{detected.format} transcript · {detected.word_count} words · {len(job.proposals)} suggestions"
     job_store.create(job)
@@ -45,8 +48,8 @@ def _create_text_job(text: str, name: str, project_id: UUID | None, wpm: int) ->
 @router.post("/text", response_model=ProcessingJob, status_code=status.HTTP_201_CREATED)
 async def create_from_text(body: TextIngest) -> ProcessingJob:
     """Create an episode from pasted text (transcript, script, article)."""
-    name = SAFE_NAME.sub("_", body.name).strip(" .") or "Pasted transcript"
-    return _create_text_job(body.text, name[:180], body.project_id, body.words_per_minute)
+    name = SAFE_NAME.sub("_", body.name).strip(" .")
+    return await run_in_threadpool(_create_text_job, body.text, name[:180], body.project_id, body.words_per_minute, body.language)
 
 
 @router.post("/text/upload", response_model=ProcessingJob, status_code=status.HTTP_201_CREATED)
@@ -73,10 +76,7 @@ async def create_from_text_file(file: UploadFile, project_id: UUID | None = None
         raise HTTPException(status_code=422, detail=str(error)) from error
     finally:
         tmp.unlink(missing_ok=True)
-    return _create_text_job(text, cleaned[:180], project_id, max(80, min(words_per_minute, 260)))
-
-
-_downloads = ThreadPoolExecutor(max_workers=2, thread_name_prefix="download")
+    return await run_in_threadpool(_create_text_job, text, cleaned[:180], project_id, max(80, min(words_per_minute, 260)))
 
 
 @router.post("/url", response_model=ProcessingJob, status_code=status.HTTP_202_ACCEPTED)
@@ -93,8 +93,11 @@ async def create_from_url(body: UrlImport) -> ProcessingJob:
     job = ProcessingJob(asset_name=f"{name}.m4a", display_name=info["title"], project_id=body.project_id, source_url=url, message=f"Queued download from {info['extractor'] or 'link'}")
     if info["uploader"]:
         job.tags = [info["uploader"][:40]]
+    if info["duration"]:
+        job.media.duration_ms = int(info["duration"] * 1000)
+        job.eta_seconds = estimates.analysis_seconds(settings_store.get(), info["duration"])
     job_store.create(job)
-    _downloads.submit(remote_media.run_download, job.id, url)
+    pipeline.submit(job.id, "analysis")
     return job_store.get(job.id)
 
 
@@ -106,7 +109,8 @@ async def create_from_local_path(body: LocalPathImport) -> ProcessingJob:
     path = remote_media.resolve_local_path(body.path)
     if body.project_id is not None:
         project_store.get(body.project_id)
-    job = job_store.create(ProcessingJob(asset_name=path.name, project_id=body.project_id, message="Importing from local path"))
+    display = naming.display_name_for(path.name)
+    job = job_store.create(ProcessingJob(asset_name=path.name, display_name=display, auto_named=bool(display), project_id=body.project_id, message="Importing from local path"))
     target = pipeline.source_path(job_store, job.id)
     await run_in_threadpool(shutil.copy2 if body.copy_file else _link_or_copy, str(path), str(target))
     job.media.size_bytes = target.stat().st_size
@@ -128,6 +132,9 @@ async def update_meta(job_id: UUID, body: JobMetaUpdate) -> ProcessingJob:
     job = job_store.get(job_id)
     if body.display_name is not None:
         job.display_name = " ".join(body.display_name.split())[:200]
+        job.auto_named = False
+    if body.language is not None:
+        job.language_override = None if body.language == "auto" else body.language
     if body.archived is not None:
         job.archived = body.archived
     if body.clear_project:
@@ -159,7 +166,7 @@ async def reorder(body: ReorderRequest) -> list[JobSummary]:
 async def bulk(body: BulkRequest) -> list[JobSummary]:
     for job_id in body.ids:
         if body.action == "delete":
-            if pipeline.is_active(job_id):
+            if pipeline.is_busy(job_store.get(job_id)):
                 raise HTTPException(status_code=409, detail=f"Episode {job_id} is still processing")
             job_store.delete(job_id)
             continue

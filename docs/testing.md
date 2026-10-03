@@ -15,8 +15,9 @@ Run everything with `scripts\test.ps1` (Windows) or `./scripts/test.sh` (POSIX).
 | Integration (episodes) | pytest | `backend/tests/test_episodes.py` | Format detection for SRT/VTT/timestamped/dialogue/prose, text episodes from paste and upload, metadata, search, archive, reorder, bulk delete, render guard for text jobs, statistics endpoint |
 | Integration (publishing) | pytest + monkeypatched httpx | `backend/tests/test_publishing.py` | Kit generation and editing, thumbnail generation (size check) and upload validation, package zip, target CRUD with secret masking, webhook publish success/failure, manual targets, WordPress connector payload |
 | Integration (imports) | pytest + monkeypatched yt-dlp | `backend/tests/test_remote_media.py` | URL validation (private hosts refused), local-path import without upload, link import with download progress and failure reporting |
+| Integration (workflow & languages) | pytest | `backend/tests/test_workflow_and_languages.py` | Checkpoint resume after a simulated stop (ingest not repeated), approval race, draft autosave, date-based names, multilingual fillers/elongations/profanity incl. Russian false positives, text language detection and override, `/v1/info` |
 | Unit (web) | Vitest + Testing Library + jsdom | `web/src/**/*.test.ts(x)` | Pure helpers, proposal panel interactions, routing, API status |
-| End-to-end | Playwright (Chromium) | `web/e2e/workflow.spec.ts`, `web/e2e/factcheck.spec.ts`, `web/e2e/providers.spec.ts`, `web/e2e/episodes.spec.ts` | Boots real API (fake transcriber) and Vite; uploads a generated WAV, rejects an edit, edits text, approves, downloads MP3, settings round-trip |
+| End-to-end | Playwright (Chromium) | `web/e2e/workflow.spec.ts`, `web/e2e/factcheck.spec.ts`, `web/e2e/providers.spec.ts`, `web/e2e/episodes.spec.ts`, `web/e2e/persistence.spec.ts` | Boots real API (fake transcriber) and Vite; uploads a generated WAV, rejects an edit, edits text, approves, downloads MP3, settings round-trip |
 | Mutation | mutmut | `backend/pyproject.toml` | Restricted to deterministic modules `analysis.py` and `publish.py` |
 | Coverage | pytest-cov, vitest v8 | – | Printed by the test scripts |
 
@@ -41,6 +42,9 @@ Setting `AIPODCASTER_TRANSCRIBER=fake` swaps the ASR provider for a scripted tra
 ## Current results
 
 ```
-backend: ruff clean, 55 tests passed
-web:     eslint clean, tsc clean, 28 unit tests passed, 6 e2e tests passed
+backend: ruff clean, 62 tests passed (80% coverage)
+web:     eslint clean, tsc clean, i18n check clean (ru, uk, es, de, fr), 40 unit tests passed, 9 e2e tests passed
+layout:  no horizontal overflow at 390 px width in en, de, ru, fr
 ```
+
+Run `npm run i18n:check` after adding UI text: it fails if any `t("…")` or `<Trans i18nKey>` key is missing from a locale or a `{{placeholder}}` differs.

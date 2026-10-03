@@ -16,7 +16,9 @@ test("upload, review, approve and download an episode", async ({ page }) => {
   await expect(page.getByRole("status")).toHaveText(/API online/);
 
   await page.getByLabel("Choose a recording").setInputFiles(makeSample());
-  await expect(page.getByRole("heading", { name: "episode.wav" })).toBeVisible();
+  // "episode.wav" is a generic file name, so the episode is named after the date and time.
+  await expect(page.getByRole("heading", { name: /^Episode \d{4}-\d{2}-\d{2} \d{2}:\d{2}$/, level: 1 })).toBeVisible();
+  await page.getByRole("button", { name: "Not now" }).click();
   await expect(page.getByRole("heading", { name: "Suggested edits" })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText(/edits accepted/)).toBeVisible();
 
@@ -33,7 +35,7 @@ test("upload, review, approve and download an episode", async ({ page }) => {
   await expect(page.getByRole("heading", { name: "Episode ready" })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByText("Episode (MP3)")).toBeVisible();
   await expect(page.getByText("Publish kit (zip)")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "E2E Episode" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "E2E Episode", level: 1 })).toBeVisible();
 
   const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download" }).first().click()]);
   expect(download.suggestedFilename()).toMatch(/\.mp3$/);

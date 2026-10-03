@@ -43,6 +43,8 @@ Everything runs on your machine by default. Cloud models are optional, pluggable
 | **Library** | Search, filter, sort, drag to reorder, group by project, inline rename, archive, bulk actions. |
 | **Providers** | Local Whisper or OpenAI for transcription. Ollama (auto-detects, picks, pulls and warms the best model for your GPU), Anthropic, OpenAI, Gemini or any OpenAI-compatible server for language tasks. OpenAI, ElevenLabs, Descript or a custom HTTP endpoint for speech. |
 | **Automation** | Keyed REST API with interactive docs and a Model Context Protocol server exposing 21 tools to assistants and agents. |
+| **Multilingual** | Interface in English, Russian, Ukrainian, Spanish, German and French. Transcripts in any Whisper language with language-aware fillers, stretched hesitations (“Aaaa”, “hmmm”, “ээээ”, “euuuh”), profanity and show notes; per-episode language override. |
+| **Never lose work** | LangGraph workflow with SQLite checkpoints resumes interrupted jobs at the step they were in; review choices, publish copy and pasted text autosave; new episodes are prompted into a project; “continue where you left off”. |
 | **Themes** | Light, dark and system mode with six accent palettes. |
 
 ## Screenshots
@@ -76,6 +78,8 @@ Requirements: **Node.js 22.12+**, **Python 3.12+**, **FFmpeg/FFprobe** on `PATH`
 .\scripts\start.ps1        # web http://localhost:5173 · API docs http://127.0.0.1:8000/docs
 .\scripts\stop.ps1
 ```
+
+If port 8000 or 5173 is taken by another program, the start scripts pick the next free ports, wire the API, web proxy, CORS and MCP launcher to them, and print the URLs (also saved in `.run/ports.json`).
 
 ```bash
 # macOS / Linux
@@ -142,7 +146,7 @@ Tools include `upload_recording`, `get_job`, `edit_transcript`, `approve_and_ren
 | `AIPODCASTER_ALLOW_LOCAL_IMPORT` | `1` | Allow importing files by absolute path on the server machine |
 | `AIPODCASTER_ALLOWED_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | CORS |
 | `AIPODCASTER_API_KEYS` | – | Extra API keys (comma separated) |
-| `AIPODCASTER_PUBLIC_URL` | `http://127.0.0.1:8000` | URL written into publish manifests |
+| `AIPODCASTER_PUBLIC_URL` | `http://127.0.0.1:8000` | Public API URL (manifests, docs link); set automatically by the start scripts |
 | `OLLAMA_HOST` | `http://127.0.0.1:11434` | Ollama server |
 | `AIPODCASTER_TRANSCRIBER` | – | `fake` for deterministic tests |
 

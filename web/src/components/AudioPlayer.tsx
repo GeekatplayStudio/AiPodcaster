@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import type { EditProposal } from "../api/types";
 import { KIND_LABELS, formatTime } from "../lib/format";
 
@@ -15,6 +16,7 @@ interface Props {
 
 /** Native audio element plus a timeline that shows every proposed cut. */
 export const AudioPlayer = forwardRef<PlayerHandle, Props>(function AudioPlayer({ src, durationMs, proposals, onPick }, ref) {
+  const { t } = useTranslation("job");
   const audioRef = useRef<HTMLAudioElement>(null);
   const [position, setPosition] = useState(0);
   const [previewStop, setPreviewStop] = useState<number | null>(null);
@@ -55,16 +57,16 @@ export const AudioPlayer = forwardRef<PlayerHandle, Props>(function AudioPlayer(
   const total = Math.max(durationMs, 1);
   return (
     <div className="player">
-      <audio ref={audioRef} controls preload="metadata" src={src} aria-label="Original recording" />
-      <div className="timeline" aria-label="Proposed cuts on the timeline">
+      <audio ref={audioRef} controls preload="metadata" src={src} aria-label={t("Original recording")} />
+      <div className="timeline" aria-label={t("Proposed cuts on the timeline")}>
         {proposals.map((p) => (
           <button
             key={p.id}
             type="button"
             className={`cut${p.accepted ? "" : " rejected"}`}
             style={{ left: `${(p.start_ms / total) * 100}%`, width: `${Math.max(((p.end_ms - p.start_ms) / total) * 100, 0.25)}%`, background: `var(--${p.kind})`, border: "none", padding: 0 }}
-            title={`${KIND_LABELS[p.kind]} · ${formatTime(p.start_ms)} · ${p.reason}`}
-            aria-label={`Preview ${KIND_LABELS[p.kind]} at ${formatTime(p.start_ms)}`}
+            title={`${t(KIND_LABELS[p.kind])} · ${formatTime(p.start_ms)} · ${p.reason}`}
+            aria-label={t("Preview {{kind}} at {{time}}", { kind: t(KIND_LABELS[p.kind]), time: formatTime(p.start_ms) })}
             onClick={() => preview(p)}
           />
         ))}
@@ -72,18 +74,18 @@ export const AudioPlayer = forwardRef<PlayerHandle, Props>(function AudioPlayer(
       </div>
       <div className="legend" aria-hidden="true">
         <span>
-          <i style={{ background: "var(--profanity)" }} /> Profanity
+          <i style={{ background: "var(--profanity)" }} /> {t("Profanity")}
         </span>
         <span>
-          <i style={{ background: "var(--filler)" }} /> Filler
+          <i style={{ background: "var(--filler)" }} /> {t("Filler")}
         </span>
         <span>
-          <i style={{ background: "var(--repeat)" }} /> Repeat
+          <i style={{ background: "var(--repeat)" }} /> {t("Repeat")}
         </span>
         <span>
-          <i style={{ background: "var(--silence)" }} /> Pause
+          <i style={{ background: "var(--silence)" }} /> {t("Pause")}
         </span>
-        <span className="muted">Click a marker to hear it in context.</span>
+        <span className="muted">{t("Click a marker to hear it in context.")}</span>
       </div>
     </div>
   );

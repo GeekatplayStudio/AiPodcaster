@@ -15,6 +15,7 @@ from typing import Protocol
 
 from ..config import AppSettings
 from ..schemas import TranscriptSegment, Word
+from . import languages
 
 log = logging.getLogger("aipodcaster.transcription")
 
@@ -68,9 +69,20 @@ def _segments_from_words(words: list[Word], max_gap_ms: int = 900, max_words: in
 class FasterWhisperProvider:
     name = "faster_whisper"
 
-    def __init__(self, model_size: str, language: str | None) -> None:
+    def __init__(self, model_size: str, language: str | None, verbatim: bool = True) -> None:
         self._model_size = model_size or "small"
         self._language = language
+        self._verbatim = verbatim
+
+    def _run(self, model, audio):  # noqa: ANN001
+        language = self._language
+        if self._verbatim and not language:
+            try:
+                language, _, _ = model.detect_language(audio, vad_filter=True, language_detection_segments=3)
+            except Exception:  # noqa: BLE001 - detection is only a hint for the prompt
+                language = None
+        prompt = languages.verbatim_prompt(language) if self._verbatim else None
+        return model.transcribe(audio, language=self._language or language, word_timestamps=True, vad_filter=True, beam_size=5, initial_prompt=prompt)
 
     def transcribe(self, wav_16k: Path) -> TranscriptionResult:
         try:
@@ -80,13 +92,13 @@ class FasterWhisperProvider:
         audio = _read_wav_16k(wav_16k)
         try:
             model = _load_model(WhisperModel, self._model_size)
-            raw_segments, info = model.transcribe(audio, language=self._language, word_timestamps=True, vad_filter=True, beam_size=5)
+            raw_segments, info = self._run(model, audio)
         except RuntimeError as error:
             if not _looks_like_gpu_problem(error):
                 raise TranscriptionError(f"Transcription failed: {error}") from error
             log.warning("GPU transcription unavailable (%s); falling back to CPU", str(error)[:120])
             model = _load_model(WhisperModel, self._model_size, force_cpu=True)
-            raw_segments, info = model.transcribe(audio, language=self._language, word_timestamps=True, vad_filter=True, beam_size=5)
+            raw_segments, info = self._run(model, audio)
         words: list[Word] = []
         for segment in raw_segments:
             for word in segment.words or []:
@@ -156,12 +168,13 @@ def _load_model(model_class, size: str, force_cpu: bool = False):
 class OpenAITranscriptionProvider:
     name = "openai"
 
-    def __init__(self, api_key: str, model: str, language: str | None) -> None:
+    def __init__(self, api_key: str, model: str, language: str | None, verbatim: bool = True) -> None:
         if not api_key:
             raise TranscriptionError("OpenAI API key is not configured")
         self._api_key = api_key
         self._model = model or "whisper-1"
         self._language = language
+        self._verbatim = verbatim
 
     def transcribe(self, wav_16k: Path) -> TranscriptionResult:
         import httpx
@@ -170,6 +183,8 @@ class OpenAITranscriptionProvider:
         data: dict[str, str] = {"model": self._model, "response_format": "verbose_json", "timestamp_granularities[]": "word"}
         if self._language:
             data["language"] = self._language
+        if self._verbatim:
+            data["prompt"] = languages.verbatim_prompt(self._language)
         response = httpx.post(
             "https://api.openai.com/v1/audio/transcriptions",
             headers={"Authorization": f"Bearer {self._api_key}"},
@@ -207,13 +222,14 @@ class FakeTranscriptionProvider:
         return TranscriptionResult(segments=_segments_from_words(words), language="en", provider=self.name)
 
 
-def build_provider(settings: AppSettings) -> TranscriptionProvider:
+def build_provider(settings: AppSettings, language_override: str | None = None) -> TranscriptionProvider:
     config = settings.transcription
+    language = language_override or config.language
     if config.provider == "fake":
         return FakeTranscriptionProvider()
     if config.provider == "openai":
-        return OpenAITranscriptionProvider(settings.keys.openai_api_key, config.model, config.language)
-    return FasterWhisperProvider(config.model, config.language)
+        return OpenAITranscriptionProvider(settings.keys.openai_api_key, config.model, language, config.verbatim)
+    return FasterWhisperProvider(config.model, language, config.verbatim)
 
 
 def provider_status(settings: AppSettings) -> list[dict[str, str | bool]]:
