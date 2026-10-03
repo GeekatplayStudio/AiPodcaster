@@ -97,6 +97,7 @@ async function shoot(seeded) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, colorScheme: "light" });
   const page = await context.newPage();
   await page.addInitScript(() => {
+    if (!sessionStorage.getItem("shots.lang")) localStorage.setItem("aipodcaster.lang", "en");
     localStorage.setItem("aipodcaster.theme", "light");
     localStorage.setItem("aipodcaster.accent", "blue");
     localStorage.setItem("aipodcaster.episodeFilters", JSON.stringify({ query: "", stage: "all", source: "all", projectId: "all", showArchived: false, flaggedOnly: false, sort: "manual", groupByProject: false }));
@@ -131,6 +132,17 @@ async function shoot(seeded) {
       await page.locator("#llm-provider").selectOption("ollama");
       await page.waitForTimeout(1500);
     },
+  });
+
+  // Russian interface on the review page
+  await page.evaluate(() => {
+    sessionStorage.setItem("shots.lang", "1");
+    localStorage.setItem("aipodcaster.lang", "ru");
+  });
+  await snap("10-russian", `#/jobs/${seeded.job.id}`, { wait: 1800 });
+  await page.evaluate(() => {
+    sessionStorage.removeItem("shots.lang");
+    localStorage.setItem("aipodcaster.lang", "en");
   });
 
   // Dark hero

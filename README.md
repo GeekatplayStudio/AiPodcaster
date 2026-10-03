@@ -14,6 +14,8 @@ Drop a raw recording or a transcript, get a cleaned, fact-checked, mastered epis
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178c6.svg)](web/)
 [![Tests](https://img.shields.io/badge/tests-pytest%20%7C%20vitest%20%7C%20playwright-2f8a3d.svg)](docs/testing.md)
 [![Local first](https://img.shields.io/badge/local--first-Whisper%20%2B%20Ollama-6d3fc3.svg)](#providers)
+[![LangGraph](https://img.shields.io/badge/workflow-LangGraph%20checkpoints-1c3c3c.svg)](#how-it-works)
+[![i18n](https://img.shields.io/badge/UI-EN%20%C2%B7%20RU%20%C2%B7%20UK%20%C2%B7%20ES%20%C2%B7%20DE%20%C2%B7%20FR-e0592b.svg)](#languages)
 
 by **Geekatplay Studio** · Vladimir Chopine
 
@@ -66,6 +68,10 @@ Everything runs on your machine by default. Cloud models are optional, pluggable
     <td><img src="docs/screenshots/07-libraries.png" alt="Knowledge libraries" /><br /><sub><b>Knowledge libraries</b> · documents indexed into a local vector store</sub></td>
     <td><img src="docs/screenshots/09-settings.png" alt="Settings with Ollama card" /><br /><sub><b>Settings</b> · providers, Ollama auto-setup, publishing services, API keys</sub></td>
   </tr>
+  <tr>
+    <td><img src="docs/screenshots/10-russian.png" alt="Review workspace with the Russian interface" /><br /><sub><b>Six interface languages</b> · here in Russian, switchable from the header</sub></td>
+    <td><img src="docs/screenshots/08-projects.png" alt="Projects linking knowledge libraries" /><br /><sub><b>Projects</b> · each show picks its libraries and can inherit others</sub></td>
+  </tr>
 </table>
 
 ## Quick start
@@ -89,9 +95,9 @@ chmod +x scripts/*.sh
 ./scripts/stop.sh
 ```
 
-1. Open **Settings** once: pick a transcription provider (local Whisper works out of the box), optionally a language model (press *Prepare best model* under Ollama) and a speech provider.
-2. On **Episodes**, drop a recording, paste a link, point at a large file on disk, or paste a transcript.
-3. Review the proposals, run a fact check, approve.
+1. Pick your interface language from the 🌐 menu, then open **Settings** once: pick a transcription provider (local Whisper works out of the box), optionally a language model (press *Prepare best model* under Ollama) and a speech provider.
+2. On **Episodes**, drop a recording, paste a link, point at a large file on disk, or paste a transcript. Long recordings show an expected processing time first; you can close the tab while they run.
+3. File the episode into a project when asked, review the proposals (choices autosave), run a fact check, approve.
 4. Open **Publish & export**, generate the copy and artwork, publish.
 
 The full walkthrough is in the [user manual](docs/user-manual.md).
@@ -99,14 +105,17 @@ The full walkthrough is in the [user manual](docs/user-manual.md).
 ## How it works
 
 ```
- upload / paste ─▶ ingest ─▶ transcribe ─▶ propose edits ─▶ REVIEW & APPROVE ─▶ render ─▶ publish kit ─▶ publish
-                  FFprobe    Whisper or     fillers, repeats,  you decide every   FFmpeg cuts   captions, notes   website, WordPress,
-                  magic      OpenAI;        profanity, pauses, cut; fact check    + loudnorm,   chapters, RSS,    Buzzsprout, Transistor,
-                  bytes      text formats   show notes         against libraries  or TTS        report, zip       manual checklists
+ upload / link / paste ─▶ ingest ─▶ transcribe ─▶ propose edits ─▶ ⏸ REVIEW & APPROVE ─▶ render ─▶ publish kit ─▶ publish
+                          FFprobe    Whisper or     fillers, repeats,   you decide every    FFmpeg cuts   captions, notes   website, WordPress,
+                          magic      OpenAI,        profanity, pauses,  cut; fact check     + loudnorm,   chapters, RSS,    Buzzsprout, Transistor,
+                          bytes      verbatim       show notes          against libraries   or TTS        report, zip       manual checklists
+          └──────────────── LangGraph workflow · checkpoint after every step · resumes after a restart ────────────────┘
 ```
 
-- **Backend** `backend/` – FastAPI. Services for audio (FFmpeg, fixed argv), transcription, analysis, language models, speech, RAG (parsing, ChromaDB index, claims, verification), statistics, publishing connectors and an MCP server. Jobs persist as JSON per episode under `data/`.
-- **Web** `web/` – React 19 + TypeScript on Vite 8. No UI framework; hand-written components, dependency-free SVG charts, CSS variables for themes.
+The review step is a real LangGraph human-in-the-loop interrupt: the graph pauses until you approve. Checkpoints live in `data/checkpoints.sqlite`, so a server restart continues a three-hour transcription instead of starting it again.
+
+- **Backend** `backend/` – FastAPI. LangGraph workflow over services for audio (FFmpeg, fixed argv), transcription, language-aware analysis, language models, speech, RAG (parsing, ChromaDB index, claims, verification), statistics, publishing connectors and an MCP server. Jobs persist as JSON per episode under `data/`.
+- **Web** `web/` – React 19 + TypeScript on Vite 8. No UI framework; hand-written components, dependency-free SVG charts, CSS variables for themes, i18next with lazily loaded locales, debounced autosave.
 - **Security** – sanitised names, UUID-only paths, size and duration limits, magic-byte checks, output allow-list, CORS, security headers, server-side secrets with masking, optional API keys for external access.
 
 More detail: [architecture](docs/architecture.md) · [testing strategy](docs/testing.md) · [website connector contract](docs/website-connector/README.md).
@@ -123,6 +132,16 @@ More detail: [architecture](docs/architecture.md) · [testing strategy](docs/tes
 | Fact-check sources | your libraries | Wikipedia |
 
 Keys live in `data/settings.json` on the server and are only ever shown masked. Environment variables (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `ELEVENLABS_API_KEY`, `DESCRIPT_API_KEY`) work as fallbacks.
+
+## Languages
+
+| | |
+| --- | --- |
+| **Interface** | English, Русский, Українська, Español, Deutsch, Français. Every key is checked in every language by `npm run i18n:check`. |
+| **Spoken language** | Detected per recording (or per pasted text) and overridable per episode; show notes, publish copy and fact-check explanations follow it, and Wikipedia checks use the matching edition. |
+| **Verbatim transcription** | Whisper is prompted in the episode's language to keep hesitations it would otherwise drop, so they can be cut from the audio. |
+| **Fillers** | Interjections per language (*um, uh* · *э, эм, хм* · *euh* · *äh, ähm* · *eh, este*), stretched sounds in any language (*Aaaa, hmmm, eeee, ммм, а-а-а, euuuh*) and context-dependent words (*like* · *ну, как бы* · *o sea* · *du coup*), which are suggested but not pre-selected. |
+| **Profanity** | Word lists for English, Spanish, German, French, Italian, Portuguese, Dutch and Polish; anchored stem patterns for Russian and Ukrainian that catch inflected forms without flagging look-alikes such as «рубля». |
 
 ## API and MCP
 
@@ -157,6 +176,8 @@ Tools include `upload_recording`, `get_job`, `edit_transcript`, `approve_and_ren
 .\scripts\test.ps1 -E2E       # + Playwright browser flows (own ports, safe while the app runs)
 .\scripts\test.ps1 -Mutation  # + mutmut on the deterministic modules
 ```
+
+`npm run check` in `web/` runs lint, type checks, the translation key check and unit tests.
 
 ## Project layout
 
